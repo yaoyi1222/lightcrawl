@@ -1,0 +1,516 @@
+from __future__ import annotations
+
+import asyncio
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Literal
+from urllib.parse import urlparse
+
+from . import auth, content as content_mod, fetch_browser, fetch_http
+from .errors import ErrorCode, FetchError
+from .url_safety import domain_matches, validate_url
+
+Strategy = Literal["auto", "http", "browser", "authed"]
+
+
+@dataclass
+class Attempt:
+    strategy: str
+    result: str
+
+    def to_dict(self) -> dict:
+        return {"strategy": self.strategy, "result": self.result}
+
+
+@dataclass
+class WaitForArg:
+    selector: str | None = None
+    network_idle: bool = False
+    timeout_ms: int = 10_000
+
+
+@dataclass
+class FetchRequest:
+    url: str
+    strategy: Strategy = "auto"
+    profile: str | None = None
+    output_format: Literal["markdown", "html", "text"] = "markdown"
+    selector: str | None = None
+    wait_for: WaitForArg | None = None
+    max_inline_tokens: int = 8000
+    timeout_ms: int = 30_000
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+# -- Bug 9: binary file extensions that browsers download instead of render.
+# An early reject avoids the "Download is starting" Playwright exception and
+# the wasted L1→L2 escalation cycle.
+_BINARY_EXTS = (
+    ".pdf", ".zip", ".tar.gz", ".tar.bz2", ".tar.xz", ".tgz", ".rar", ".7z",
+    ".dmg", ".exe", ".msi", ".pkg", ".deb", ".rpm",
+    ".docx", ".xlsx", ".pptx", ".odt", ".ods",
+    ".mp3", ".mp4", ".mov", ".avi", ".mkv", ".webm",
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico",
+)
+
+
+def _looks_like_binary_url(url: str) -> bool:
+    """True if URL path ends with a known non-HTML extension. Best-effort:
+    we only match when the path is unambiguous (no query / fragment) so that
+    `?path=foo.pdf` style URLs that actually return HTML aren't mis-rejected."""
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    path = parsed.path.lower()
+    return any(path.endswith(ext) for ext in _BINARY_EXTS)
+
+
+def _domain_hint_for(url: str) -> str | None:
+    """Return a per-domain hint string (from `content.DOMAIN_HINTS`) suitable
+    for surfacing in failure suggestions. Best-effort; None if no entry."""
+    try:
+        host = urlparse(url).hostname or ""
+    except ValueError:
+        return None
+    if not host:
+        return None
+    hints = content_mod.DOMAIN_HINTS
+    if host in hints:
+        return hints[host]
+    # Fall back to eTLD+1 match (e.g. m.reddit.com → reddit.com)
+    parts = host.split(".")
+    for i in range(1, len(parts) - 1):
+        suffix = ".".join(parts[i:])
+        if suffix in hints:
+            return hints[suffix]
+    return None
+
+
+def _binary_url_suggestions(url: str) -> list[str]:
+    return [
+        "this URL points to a binary file the browser would download, not a "
+        "renderable HTML page",
+        f"download with shell tools instead, e.g. `curl -L -o file '{url}'`",
+        "if it's an arXiv PDF, try the abs/HTML page instead "
+        "(e.g. https://arxiv.org/abs/<id>)",
+    ]
+
+
+# Bug 11: empirically ~15-20% of L1 requests to docs.python.org / GitHub
+# trending time out on the first attempt but succeed on a quick retry. A
+# 4-second second attempt avoids the L2 browser-launch penalty (~10s) on the
+# happy retry path, with a small worst-case cost (~4s) on truly broken sites.
+_L1_RETRY_TIMEOUT_S = 4.0
+
+
+async def _l1_with_one_retry(url: str, timeout_s: float) -> fetch_http.HttpResult:
+    """Run L1 once; on `asyncio.TimeoutError` only, try one short retry.
+
+    `FetchError`s (SSL/DNS/etc.) are deterministic — no point retrying.
+    Re-raises `asyncio.TimeoutError` if the retry also times out, so callers
+    can fall back to L2 the same way they did before this helper existed.
+    """
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(fetch_http.fetch, url, timeout=timeout_s),
+            timeout=timeout_s + 1.0,
+        )
+    except asyncio.TimeoutError:
+        retry_to = min(_L1_RETRY_TIMEOUT_S, timeout_s)
+        return await asyncio.wait_for(
+            asyncio.to_thread(fetch_http.fetch, url, timeout=retry_to),
+            timeout=retry_to + 1.0,
+        )
+
+
+# -- CF challenge detection (PR-4) -------------------------------------------------
+
+# Signal strength levels:
+#   Level 1 (assert): a single match on a Cloudflare-private token that never
+#       appears in normal content. `/cdn-cgi/challenge-platform/` is CF's own
+#       path; `cf-chl-bypass` / `cf_chl_opt` are internal CF challenge vars.
+#   Level 2 (n≥2): individual words that can appear in legitimate discussions
+#       of Cloudflare (e.g. a SO answer about CF) but together are a strong
+#       indicator. Two or more hits → likely a real challenge page.
+_CF_CHALLENGE_STRONG = (
+    "/cdn-cgi/challenge-platform/",
+    "cf-chl-bypass",
+    "cf_chl_opt",
+    "<title>just a moment...</title>",
+    "performing security verification",
+)
+_CF_CHALLENGE_WEAK = (
+    "checking your browser",
+    "ddos protection by cloudflare",
+    "attention required",
+    "just a moment",
+    "verifying you are human",
+    "cf-mitigated",
+    "this website uses a security service",
+)
+
+
+def _looks_like_challenge(text: str) -> bool:
+    if not text:
+        return True
+    lo = text.lower()
+    for kw in _CF_CHALLENGE_STRONG:
+        if kw in lo:
+            return True
+    n = sum(1 for kw in _CF_CHALLENGE_WEAK if kw in lo)
+    return n >= 2
+
+
+# -- escalation heuristic (PR-3) ---------------------------------------------------
+
+def _should_escalate_to_browser(http_status: int, html: str) -> bool:
+    if http_status in (403, 429, 503):
+        return True
+    if _looks_like_challenge(html):
+        return True
+    if content_mod.detect_spa_shell(html):
+        return True
+    # Tiny body without recognizable content → likely needs JS
+    if len(html) < 200 and "<" in html:
+        return True
+    # Large HTML with nearly zero visible text → SPA / login wall shell
+    # (x.com ~75k html 0.5% text; www.reddit shell ~3k html 1% text).
+    # Normal article pages are ≥4-5%.
+    if len(html) > 2000 and content_mod.visible_text_ratio(html) < 0.02:
+        return True
+    return False
+
+
+@dataclass
+class Router:
+    pool: fetch_browser.BrowserPool = field(default_factory=fetch_browser.BrowserPool)
+
+    async def close(self) -> None:
+        await self.pool.close()
+
+    async def fetch(self, req: FetchRequest) -> dict:
+        # Bug 9: reject obvious binary URLs before any network call so the
+        # caller gets a clear error code instead of an opaque
+        # "Download is starting" Playwright exception.
+        if _looks_like_binary_url(req.url):
+            return _failure(
+                req.url,
+                ErrorCode.UNSUPPORTED_CONTENT_TYPE,
+                "URL points to a binary file (likely PDF/archive/media); "
+                "the fetcher only handles HTML",
+                attempts=[],
+                suggestions=_binary_url_suggestions(req.url),
+            )
+
+        try:
+            resolved = validate_url(req.url)
+        except FetchError as e:
+            return _failure(req.url, e.code, e.detail, attempts=[])
+
+        attempts: list[Attempt] = []
+
+        # L3 path: explicit profile
+        if req.profile or req.strategy == "authed":
+            return await self._fetch_authed(req, resolved.etld1, attempts)
+
+        # Forced strategies
+        if req.strategy == "http":
+            return await self._fetch_http_only(req, attempts)
+        if req.strategy == "browser":
+            return await self._fetch_browser_only(req, attempts, storage_state=None)
+
+        # Auto: try L1, escalate to L2 on signals
+        l1_timeout = min(8.0, req.timeout_ms / 1000.0)
+        try:
+            r = await _l1_with_one_retry(req.url, l1_timeout)
+        except asyncio.TimeoutError:
+            attempts.append(Attempt("http", "timeout"))
+            return await self._fetch_browser_only(req, attempts, storage_state=None)
+        except FetchError as e:
+            attempts.append(Attempt("http", e.code.value.lower()))
+            if e.code in (ErrorCode.HTTP_ERROR, ErrorCode.TIMEOUT):
+                return await self._fetch_browser_only(req, attempts, storage_state=None)
+            return _failure(req.url, e.code, e.detail, attempts)
+
+        attempts.append(Attempt("http", str(r.status_code)))
+
+        # Login wall detected without profile → stop, don't escalate
+        extracted = content_mod.html_to_markdown(r.text, selector=req.selector, url=req.url)
+        if extracted.looks_like_login_wall and r.status_code in (200, 401):
+            return _login_required(req.url, attempts)
+
+        if _should_escalate_to_browser(r.status_code, r.text):
+            return await self._fetch_browser_only(
+                req, attempts, storage_state=None, prior=r
+            )
+
+        return _success_from_http(req, r, extracted, attempts, "http")
+
+    # -- helpers --
+
+    async def _fetch_http_only(self, req: FetchRequest, attempts: list[Attempt]) -> dict:
+        l1_timeout = min(8.0, req.timeout_ms / 1000.0)
+        try:
+            r = await _l1_with_one_retry(req.url, l1_timeout)
+        except asyncio.TimeoutError:
+            attempts.append(Attempt("http", "timeout"))
+            return _failure(req.url, ErrorCode.TIMEOUT, "L1 timed out", attempts)
+        except FetchError as e:
+            attempts.append(Attempt("http", e.code.value.lower()))
+            return _failure(req.url, e.code, e.detail, attempts)
+        attempts.append(Attempt("http", str(r.status_code)))
+        extracted = content_mod.html_to_markdown(r.text, selector=req.selector, url=req.url)
+        return _success_from_http(req, r, extracted, attempts, "http")
+
+    async def _fetch_browser_only(
+        self,
+        req: FetchRequest,
+        attempts: list[Attempt],
+        *,
+        storage_state: str | dict | None,
+        prior: fetch_http.HttpResult | None = None,
+    ) -> dict:
+        wf = fetch_browser.WaitFor(
+            selector=(req.wait_for.selector if req.wait_for else None),
+            network_idle=(req.wait_for.network_idle if req.wait_for else False),
+            timeout_ms=(req.wait_for.timeout_ms if req.wait_for else 10_000),
+        )
+        try:
+            r = await asyncio.wait_for(
+                fetch_browser.fetch(
+                    self.pool,
+                    req.url,
+                    wait_for=wf,
+                    timeout=min(15.0, req.timeout_ms / 1000.0),
+                    storage_state=storage_state,
+                ),
+                timeout=req.timeout_ms / 1000.0,
+            )
+        except asyncio.TimeoutError:
+            attempts.append(Attempt("browser", "timeout"))
+            return _failure(req.url, ErrorCode.TIMEOUT, "L2 timed out", attempts)
+        except FetchError as e:
+            attempts.append(Attempt("browser", e.code.value.lower()))
+            suggestions: list[str] = []
+            # Bug 8: when the L2 surfaces SPA_NAVIGATION_LOOP, look up a
+            # per-domain hint (e.g. "use old.reddit.com") so the agent has a
+            # concrete next action instead of just an opaque error code.
+            if e.code == ErrorCode.SPA_NAVIGATION_LOOP:
+                hint = _domain_hint_for(req.url)
+                if hint:
+                    suggestions.append(hint)
+            return _failure(req.url, e.code, e.detail, attempts, suggestions=suggestions)
+
+        attempts.append(Attempt("browser", str(r.status_code)))
+        if _looks_like_challenge(r.text) or r.status_code in (403, 429, 503):
+            return _failure(
+                req.url,
+                ErrorCode.BLOCKED_BY_CLOUDFLARE,
+                f"L2 stealth still blocked, last status {r.status_code}",
+                attempts,
+                suggestions=_blocked_suggestions(req.url, has_profile=storage_state is not None),
+                final_url=r.final_url,
+                status_code=r.status_code,
+            )
+
+        extracted = content_mod.html_to_markdown(r.text, selector=req.selector, url=req.url)
+        if extracted.looks_like_login_wall and storage_state is None:
+            return _login_required(req.url, attempts)
+
+        return _success_from_browser(req, r, extracted, attempts, "browser" if storage_state is None else "authed")
+
+    async def _fetch_authed(
+        self, req: FetchRequest, target_etld1: str, attempts: list[Attempt]
+    ) -> dict:
+        if not req.profile:
+            return _failure(
+                req.url,
+                ErrorCode.URL_NOT_ALLOWED,
+                "strategy=authed requires `profile` parameter",
+                attempts,
+            )
+        try:
+            meta = auth.get_profile(req.profile)
+        except FetchError as e:
+            return _failure(req.url, e.code, e.detail, attempts)
+
+        if meta.status != "active":
+            return _failure(
+                req.url,
+                ErrorCode.SESSION_EXPIRED,
+                f"profile {req.profile!r} status={meta.status}",
+                attempts,
+                suggestions=[
+                    f"re-login: auth_login(profile={req.profile!r}, url=<login URL>)",
+                ],
+            )
+
+        if not domain_matches(req.url, meta.bound_domain):
+            return _failure(
+                req.url,
+                ErrorCode.PROFILE_DOMAIN_MISMATCH,
+                f"profile {req.profile!r} bound to {meta.bound_domain}, "
+                f"target URL is on a different domain",
+                attempts,
+            )
+
+        state = auth.load_storage_state(req.profile)
+        result = await self._fetch_browser_only(req, attempts, storage_state=state)
+
+        # Heuristic re-validation: if response itself looks like a login wall, mark expired
+        if not result["ok"] and result["error_code"] == ErrorCode.LOGIN_REQUIRED.value:
+            auth.update_profile_status(
+                req.profile, status="expired", expired_reason="response_was_login_wall"
+            )
+            return _failure(
+                req.url,
+                ErrorCode.SESSION_EXPIRED,
+                f"profile {req.profile!r} no longer valid (server returned login wall)",
+                attempts,
+                suggestions=[
+                    f"re-login: auth_login(profile={req.profile!r}, url=<login URL>)",
+                ],
+            )
+
+        if result["ok"]:
+            auth.update_profile_status(req.profile, status="active")
+        return result
+
+
+# -- response shapers --
+
+
+def _success_from_http(
+    req: FetchRequest,
+    r: fetch_http.HttpResult,
+    extracted: content_mod.ExtractedContent,
+    attempts: list[Attempt],
+    strategy_used: str,
+) -> dict:
+    body = _format_body(req.output_format, extracted, r.text)
+    inline, truncated, dump_path = content_mod.maybe_dump(req.url, body, req.max_inline_tokens)
+    return {
+        "ok": True,
+        "url": req.url,
+        "final_url": r.final_url,
+        "strategy_used": strategy_used,
+        "fetched_at": _now_iso(),
+        "title": extracted.title,
+        "content": inline,
+        "content_truncated": truncated,
+        "dump_path": dump_path,
+        "metadata": {
+            "status_code": r.status_code,
+            "content_type": r.content_type,
+            "elapsed_ms": r.elapsed_ms,
+            "needs_js_hint": extracted.needs_js_hint,
+            "suggested_selectors": extracted.suggested_selectors,
+            "selector_hint": extracted.selector_hint,
+        },
+        "attempts": [a.to_dict() for a in attempts],
+        "headings": [{"level": h.level, "text": h.text, "line": h.line} for h in extracted.headings],
+    }
+
+
+def _success_from_browser(
+    req: FetchRequest,
+    r: fetch_browser.BrowserResult,
+    extracted: content_mod.ExtractedContent,
+    attempts: list[Attempt],
+    strategy_used: str,
+) -> dict:
+    body = _format_body(req.output_format, extracted, r.text)
+    inline, truncated, dump_path = content_mod.maybe_dump(req.url, body, req.max_inline_tokens)
+    return {
+        "ok": True,
+        "url": req.url,
+        "final_url": r.final_url,
+        "strategy_used": strategy_used,
+        "fetched_at": _now_iso(),
+        "title": extracted.title,
+        "content": inline,
+        "content_truncated": truncated,
+        "dump_path": dump_path,
+        "metadata": {
+            "status_code": r.status_code,
+            "content_type": r.content_type,
+            "elapsed_ms": r.elapsed_ms,
+            "needs_js_hint": extracted.needs_js_hint,
+            "suggested_selectors": extracted.suggested_selectors,
+            "selector_hint": extracted.selector_hint,
+        },
+        "attempts": [a.to_dict() for a in attempts],
+        "headings": [{"level": h.level, "text": h.text, "line": h.line} for h in extracted.headings],
+    }
+
+
+def _format_body(fmt: str, extracted: content_mod.ExtractedContent, raw_html: str) -> str:
+    if fmt == "html":
+        return raw_html
+    if fmt == "text":
+        return extracted.plain_text
+    return extracted.markdown
+
+
+def _failure(
+    url: str,
+    code: ErrorCode,
+    detail: str,
+    attempts: list[Attempt],
+    suggestions: list[str] | None = None,
+    *,
+    final_url: str | None = None,
+    status_code: int | None = None,
+) -> dict:
+    """Failure response. Mirrors the key set of `_success_from_*` so MCP
+    clients can rely on a stable schema regardless of ok/error path."""
+    strategy_used = attempts[-1].strategy if attempts else None
+    return {
+        "ok": False,
+        "url": url,
+        "final_url": final_url,
+        "strategy_used": strategy_used,
+        "fetched_at": _now_iso(),
+        "title": "",
+        "content": "",
+        "content_truncated": False,
+        "dump_path": None,
+        "metadata": {
+            "status_code": status_code,
+            "content_type": None,
+            "elapsed_ms": None,
+            "needs_js_hint": None,
+            "suggested_selectors": [],
+            "selector_hint": None,
+        },
+        "error_code": code.value,
+        "error_detail": detail,
+        "attempts": [a.to_dict() for a in attempts],
+        "suggestions": suggestions or [],
+        "headings": [],
+    }
+
+
+def _login_required(url: str, attempts: list[Attempt]) -> dict:
+    return _failure(
+        url,
+        ErrorCode.LOGIN_REQUIRED,
+        "the page requires login; no profile was supplied",
+        attempts,
+        suggestions=[
+            "create a profile: auth_login(profile=<short site name>, url=<login URL>)",
+            "if you already have a profile, retry with fetch_url(url, profile=<name>)",
+        ],
+    )
+
+
+def _blocked_suggestions(url: str, *, has_profile: bool) -> list[str]:
+    out = []
+    if not has_profile:
+        out.append("the site may need login: try auth_login + fetch_url(url, profile=...)")
+    out.append(f"try archive: fetch_url('https://web.archive.org/web/{url}')")
+    return out

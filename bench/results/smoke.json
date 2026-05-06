@@ -1,0 +1,133 @@
+{
+  "token_strategy": "tiktoken-cl100k_base",
+  "rows": [
+    {
+      "url": "https://en.wikipedia.org/wiki/Claude_Shannon",
+      "category": "wiki",
+      "note": "wiki \u2014 selector saving",
+      "selector": "#mw-content-text",
+      "outcomes": [
+        {
+          "mode": "baseline",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "httpx-raw",
+          "elapsed_ms": 3677,
+          "tokens_returned": 62769,
+          "tokens_full": 62769,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        },
+        {
+          "mode": "plus_auto",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "http",
+          "elapsed_ms": 4673,
+          "tokens_returned": 7964,
+          "tokens_full": 31752,
+          "truncated": true,
+          "dump_path": "/Users/fafa/.webfetch-plus/dumps/68c18fe60215bbd3.md",
+          "error_code": null,
+          "error_detail": null
+        },
+        {
+          "mode": "plus_selector",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "http",
+          "elapsed_ms": 4473,
+          "tokens_returned": 8122,
+          "tokens_full": 55010,
+          "truncated": true,
+          "dump_path": "/Users/fafa/.webfetch-plus/dumps/68c18fe60215bbd3.md",
+          "error_code": null,
+          "error_detail": null
+        }
+      ]
+    },
+    {
+      "url": "https://raw.githubusercontent.com/python/cpython/main/README.rst",
+      "category": "github",
+      "note": "raw text \u2014 both should be tiny and successful",
+      "selector": null,
+      "outcomes": [
+        {
+          "mode": "baseline",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "httpx-raw",
+          "elapsed_ms": 4248,
+          "tokens_returned": 1808,
+          "tokens_full": 1808,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        },
+        {
+          "mode": "plus_auto",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "http",
+          "elapsed_ms": 3982,
+          "tokens_returned": 1808,
+          "tokens_full": 1808,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        }
+      ]
+    },
+    {
+      "url": "https://news.ycombinator.com/",
+      "category": "news",
+      "note": "small page \u2014 table-only layout, fallback path",
+      "selector": "#hnmain",
+      "outcomes": [
+        {
+          "mode": "baseline",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "httpx-raw",
+          "elapsed_ms": 4616,
+          "tokens_returned": 3842,
+          "tokens_full": 3842,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        },
+        {
+          "mode": "plus_auto",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "http",
+          "elapsed_ms": 3719,
+          "tokens_returned": 3838,
+          "tokens_full": 3838,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        },
+        {
+          "mode": "plus_selector",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "http",
+          "elapsed_ms": 3975,
+          "tokens_returned": 3838,
+          "tokens_full": 3838,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+from enum import Enum
+
+
+class ErrorCode(str, Enum):
+    BLOCKED_BY_CLOUDFLARE = "BLOCKED_BY_CLOUDFLARE"
+    JS_TIMEOUT = "JS_TIMEOUT"
+    DNS_FAILED = "DNS_FAILED"
+    URL_NOT_ALLOWED = "URL_NOT_ALLOWED"
+    LOGIN_REQUIRED = "LOGIN_REQUIRED"
+    SESSION_EXPIRED = "SESSION_EXPIRED"
+    PROFILE_DOMAIN_MISMATCH = "PROFILE_DOMAIN_MISMATCH"
+    PROFILE_NOT_FOUND = "PROFILE_NOT_FOUND"
+    CONTENT_TOO_LARGE = "CONTENT_TOO_LARGE"
+    HTTP_ERROR = "HTTP_ERROR"
+    TIMEOUT = "TIMEOUT"
+    UNSUPPORTED_CONTENT_TYPE = "UNSUPPORTED_CONTENT_TYPE"
+    SPA_NAVIGATION_LOOP = "SPA_NAVIGATION_LOOP"
+    UNKNOWN = "UNKNOWN"
+
+
+class FetchError(Exception):
+    def __init__(self, code: ErrorCode, detail: str):
+        self.code = code
+        self.detail = detail
+        super().__init__(f"{code.value}: {detail}")

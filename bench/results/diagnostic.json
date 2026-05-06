@@ -1,0 +1,1327 @@
+[
+  {
+    "url": "https://en.wikipedia.org/wiki/Claude_Shannon",
+    "category": "wiki",
+    "fetch_ok": true,
+    "fetch_status": 200,
+    "raw_html_chars": 520122,
+    "raw_html_tokens": 171233,
+    "dom_headings": {
+      "h1": 1,
+      "h2": 12,
+      "h3": 16,
+      "h4": 2,
+      "h5": 0,
+      "h6": 0,
+      "total": 31
+    },
+    "rows": [
+      {
+        "name": "P0_raw",
+        "tokens": 171233,
+        "chars": 520122,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": true,
+        "sample_head": "<!DOCTYPE html> <html class=\"client-nojs vector-feature-language-in-header-enabled vector-feature-language-in-main-menu-disabled vector-feature-language-in-main",
+        "error": null
+      },
+      {
+        "name": "P1_readability_md",
+        "tokens": 31746,
+        "chars": 106840,
+        "headings_md_total": 9,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 2,
+          "h3": 6,
+          "h4": 1,
+          "h5": 0,
+          "h6": 0,
+          "total": 9
+        },
+        "has_script_residue": false,
+        "sample_head": "American mathematician (1916–2001)  | Claude Shannon | | | --- | --- | |  | | | Born | Claude Elwood Shannon  (1916-04-30)April 30, 1916 | | Died | February 24,",
+        "error": null
+      },
+      {
+        "name": "P2_clean_html_safe",
+        "tokens": 150330,
+        "chars": 456474,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "<body class=\"skin--responsive skin-vector skin-vector-search-vue mediawiki ltr sitedir-ltr mw-hide-empty-elt ns-0 ns-subject mw-editable page-Claude_Shannon roo",
+        "error": null
+      },
+      {
+        "name": "P2b_clean_html_aggressive",
+        "tokens": 113374,
+        "chars": 330892,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "<body> <div aria-live=\"polite\"></div><a href=\"#bodyContent\">Jump to content</a> <div>  </div> <div>  <div>  <div>  <div></div>  </div>  <div>  <div>  <div>  </d",
+        "error": null
+      },
+      {
+        "name": "P3_clean_md",
+        "tokens": 61959,
+        "chars": 193506,
+        "headings_md_total": 31,
+        "headings_md_levels": {
+          "h1": 1,
+          "h2": 12,
+          "h3": 16,
+          "h4": 2,
+          "h5": 0,
+          "h6": 0,
+          "total": 31
+        },
+        "has_script_residue": false,
+        "sample_head": "[Jump to content](#bodyContent)  Main menu  Navigation  * [Main page](/wiki/Main_Page \"Visit the main page [z]\") * [Contents](/wiki/Wikipedia:Contents \"Guides t",
+        "error": null
+      },
+      {
+        "name": "P3b_clean_md_aggressive",
+        "tokens": 56365,
+        "chars": 178678,
+        "headings_md_total": 29,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 11,
+          "h3": 16,
+          "h4": 2,
+          "h5": 0,
+          "h6": 0,
+          "total": 29
+        },
+        "has_script_residue": false,
+        "sample_head": "[Jump to content](#bodyContent)  From Wikipedia, the free encyclopedia  |  |  | | --- | --- | |  | This article **needs additional citations for [verification](",
+        "error": null
+      },
+      {
+        "name": "P4_trafilatura",
+        "tokens": 27950,
+        "chars": 96034,
+        "headings_md_total": 25,
+        "headings_md_levels": {
+          "h1": 1,
+          "h2": 7,
+          "h3": 15,
+          "h4": 2,
+          "h5": 0,
+          "h6": 0,
+          "total": 25
+        },
+        "has_script_residue": false,
+        "sample_head": "# Claude Shannon  This article needs additional citations for . (April 2026) |  Claude Shannon | | |---|---| | Born | Claude Elwood Shannon April 30, 1916 | | D",
+        "error": null
+      }
+    ],
+    "error": null
+  },
+  {
+    "url": "https://en.wikipedia.org/wiki/Transformer_(deep_learning_architecture)",
+    "category": "wiki",
+    "fetch_ok": true,
+    "fetch_status": 200,
+    "raw_html_chars": 734146,
+    "raw_html_tokens": 233448,
+    "dom_headings": {
+      "h1": 1,
+      "h2": 11,
+      "h3": 25,
+      "h4": 12,
+      "h5": 0,
+      "h6": 0,
+      "total": 49
+    },
+    "rows": [
+      {
+        "name": "P0_raw",
+        "tokens": 233448,
+        "chars": 734146,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": true,
+        "sample_head": "<!DOCTYPE html> <html class=\"client-nojs vector-feature-language-in-header-enabled vector-feature-language-in-main-menu-disabled vector-feature-language-in-main",
+        "error": null
+      },
+      {
+        "name": "P1_readability_md",
+        "tokens": 50399,
+        "chars": 158822,
+        "headings_md_total": 19,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 1,
+          "h3": 12,
+          "h4": 6,
+          "h5": 0,
+          "h6": 0,
+          "total": 19
+        },
+        "has_script_residue": false,
+        "sample_head": "Algorithm for modelling sequential data  [![](//upload.wikimedia.org/wikipedia/commons/thumb/3/34/Transformer%2C_full_architecture.png/250px-Transformer%2C_full",
+        "error": null
+      },
+      {
+        "name": "P2_clean_html_safe",
+        "tokens": 136999,
+        "chars": 434388,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "<body class=\"skin--responsive skin-vector skin-vector-search-vue mediawiki ltr sitedir-ltr mw-hide-empty-elt ns-0 ns-subject mw-editable page-Transformer_deep_l",
+        "error": null
+      },
+      {
+        "name": "P2b_clean_html_aggressive",
+        "tokens": 100679,
+        "chars": 309821,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "<body> <div aria-live=\"polite\"></div><a href=\"#bodyContent\">Jump to content</a> <div>  </div> <div>  <div>  <div>  <div></div>  </div>  <div>  <div>  <div>  </d",
+        "error": null
+      },
+      {
+        "name": "P3_clean_md",
+        "tokens": 52114,
+        "chars": 182140,
+        "headings_md_total": 49,
+        "headings_md_levels": {
+          "h1": 1,
+          "h2": 11,
+          "h3": 25,
+          "h4": 12,
+          "h5": 0,
+          "h6": 0,
+          "total": 49
+        },
+        "has_script_residue": false,
+        "sample_head": "[Jump to content](#bodyContent)  Main menu  Navigation  * [Main page](/wiki/Main_Page \"Visit the main page [z]\") * [Contents](/wiki/Wikipedia:Contents \"Guides t",
+        "error": null
+      },
+      {
+        "name": "P3b_clean_md_aggressive",
+        "tokens": 47057,
+        "chars": 168067,
+        "headings_md_total": 47,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 10,
+          "h3": 25,
+          "h4": 12,
+          "h5": 0,
+          "h6": 0,
+          "total": 47
+        },
+        "has_script_residue": false,
+        "sample_head": "[Jump to content](#bodyContent)  From Wikipedia, the free encyclopedia  (Redirected from [Transformer (deep learning architecture)](/w/index.php?title=Transform",
+        "error": null
+      },
+      {
+        "name": "P4_trafilatura",
+        "tokens": 28488,
+        "chars": 103447,
+        "headings_md_total": 36,
+        "headings_md_levels": {
+          "h1": 1,
+          "h2": 8,
+          "h3": 17,
+          "h4": 10,
+          "h5": 0,
+          "h6": 0,
+          "total": 36
+        },
+        "has_script_residue": false,
+        "sample_head": "# Transformer (deep learning)  [Transformer (deep learning architecture)](/w/index.php?title=Transformer_(deep_learning_architecture)&redirect=no))  | Part of a",
+        "error": null
+      }
+    ],
+    "error": null
+  },
+  {
+    "url": "https://docs.python.org/3/library/asyncio.html",
+    "category": "static_doc",
+    "fetch_ok": true,
+    "fetch_status": 200,
+    "raw_html_chars": 24577,
+    "raw_html_tokens": 6692,
+    "dom_headings": {
+      "h1": 1,
+      "h2": 0,
+      "h3": 4,
+      "h4": 4,
+      "h5": 0,
+      "h6": 0,
+      "total": 9
+    },
+    "rows": [
+      {
+        "name": "P0_raw",
+        "tokens": 6692,
+        "chars": 24577,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": true,
+        "sample_head": "<!DOCTYPE html>  <html lang=\"en\" data-content_root=\"../\">   <head>     <meta charset=\"utf-8\" />     <meta name=\"viewport\" content=\"width=device-width, initial-s",
+        "error": null
+      },
+      {
+        "name": "P1_readability_md",
+        "tokens": 416,
+        "chars": 1584,
+        "headings_md_total": 1,
+        "headings_md_levels": {
+          "h1": 1,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 1
+        },
+        "has_script_residue": false,
+        "sample_head": "# `asyncio` — Asynchronous I/O  ---  asyncio is a library to write **concurrent** code using the **async/await** syntax.  asyncio is used as a foundation for mu",
+        "error": null
+      },
+      {
+        "name": "P2_clean_html_safe",
+        "tokens": 4396,
+        "chars": 15229,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "<body> <div class=\"mobile-nav\">  <nav class=\"nav-content\" role=\"navigation\">  <label for=\"menuToggler\" class=\"toggler__label\">  <span></span>  </label>  <span c",
+        "error": null
+      },
+      {
+        "name": "P2b_clean_html_aggressive",
+        "tokens": 2767,
+        "chars": 8953,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "<body> <div>  <div>  </div> </div>     <div role=\"navigation\" aria-label=\"Related\">  <h3>Navigation</h3>  <ul>  <li>  <a href=\"../genindex.html\" title=\"General ",
+        "error": null
+      },
+      {
+        "name": "P3_clean_md",
+        "tokens": 1586,
+        "chars": 6099,
+        "headings_md_total": 9,
+        "headings_md_levels": {
+          "h1": 1,
+          "h2": 0,
+          "h3": 4,
+          "h4": 4,
+          "h5": 0,
+          "h6": 0,
+          "total": 9
+        },
+        "has_script_residue": false,
+        "sample_head": "Theme  #### Previous topic  [Networking and Interprocess Communication](ipc.html \"previous chapter\")  #### Next topic  [Runners](asyncio-runner.html \"next chapt",
+        "error": null
+      },
+      {
+        "name": "P3b_clean_md_aggressive",
+        "tokens": 1457,
+        "chars": 5592,
+        "headings_md_total": 6,
+        "headings_md_levels": {
+          "h1": 1,
+          "h2": 0,
+          "h3": 3,
+          "h4": 2,
+          "h5": 0,
+          "h6": 0,
+          "total": 6
+        },
+        "has_script_residue": false,
+        "sample_head": "### Navigation  * [index](../genindex.html \"General Index\") * [modules](../py-modindex.html \"Python Module Index\") | * [next](asyncio-runner.html \"Runners\") | *",
+        "error": null
+      },
+      {
+        "name": "P4_trafilatura",
+        "tokens": 720,
+        "chars": 2854,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "`asyncio`  — Asynchronous I/O[¶](#module-asyncio)  asyncio is a library to write **concurrent** code using the **async/await** syntax.  asyncio is used as a fou",
+        "error": null
+      }
+    ],
+    "error": null
+  },
+  {
+    "url": "https://docs.python.org/3/library/typing.html",
+    "category": "static_doc",
+    "fetch_ok": true,
+    "fetch_status": 200,
+    "raw_html_chars": 536778,
+    "raw_html_tokens": 154826,
+    "dom_headings": {
+      "h1": 1,
+      "h2": 13,
+      "h3": 13,
+      "h4": 15,
+      "h5": 0,
+      "h6": 0,
+      "total": 42
+    },
+    "rows": [
+      {
+        "name": "P0_raw",
+        "tokens": 154826,
+        "chars": 536778,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": true,
+        "sample_head": "<!DOCTYPE html>  <html lang=\"en\" data-content_root=\"../\">   <head>     <meta charset=\"utf-8\" />     <meta name=\"viewport\" content=\"width=device-width, initial-s",
+        "error": null
+      },
+      {
+        "name": "P1_readability_md",
+        "tokens": 33963,
+        "chars": 138585,
+        "headings_md_total": 26,
+        "headings_md_levels": {
+          "h1": 1,
+          "h2": 12,
+          "h3": 7,
+          "h4": 6,
+          "h5": 0,
+          "h6": 0,
+          "total": 26
+        },
+        "has_script_residue": false,
+        "sample_head": "# `typing` — Support for type hints  **Source code:** [Lib/typing.py](https://github.com/python/cpython/tree/3.14/Lib/typing.py)  Note  The Python runtime does ",
+        "error": null
+      },
+      {
+        "name": "P2_clean_html_safe",
+        "tokens": 151203,
+        "chars": 523417,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "<body> <div class=\"mobile-nav\">  <nav class=\"nav-content\" role=\"navigation\">  <label for=\"menuToggler\" class=\"toggler__label\">  <span></span>  </label>  <span c",
+        "error": null
+      },
+      {
+        "name": "P2b_clean_html_aggressive",
+        "tokens": 98549,
+        "chars": 320690,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "<body> <div>  <div>  </div> </div>     <div role=\"navigation\" aria-label=\"Related\">  <h3>Navigation</h3>  <ul>  <li>  <a href=\"../genindex.html\" title=\"General ",
+        "error": null
+      },
+      {
+        "name": "P3_clean_md",
+        "tokens": 43616,
+        "chars": 175489,
+        "headings_md_total": 42,
+        "headings_md_levels": {
+          "h1": 1,
+          "h2": 13,
+          "h3": 13,
+          "h4": 15,
+          "h5": 0,
+          "h6": 0,
+          "total": 42
+        },
+        "has_script_residue": false,
+        "sample_head": "Theme  ### [Table of Contents](../contents.html)  * [`typing` — Support for type hints](#)   + [Specification for the Python Type System](#specification-for-the",
+        "error": null
+      },
+      {
+        "name": "P3b_clean_md_aggressive",
+        "tokens": 43002,
+        "chars": 173104,
+        "headings_md_total": 38,
+        "headings_md_levels": {
+          "h1": 1,
+          "h2": 13,
+          "h3": 11,
+          "h4": 13,
+          "h5": 0,
+          "h6": 0,
+          "total": 38
+        },
+        "has_script_residue": false,
+        "sample_head": "### Navigation  * [index](../genindex.html \"General Index\") * [modules](../py-modindex.html \"Python Module Index\") | * [next](pydoc.html \"pydoc — Documentation ",
+        "error": null
+      },
+      {
+        "name": "P4_trafilatura",
+        "tokens": 32709,
+        "chars": 130800,
+        "headings_md_total": 34,
+        "headings_md_levels": {
+          "h1": 20,
+          "h2": 7,
+          "h3": 3,
+          "h4": 4,
+          "h5": 0,
+          "h6": 0,
+          "total": 34
+        },
+        "has_script_residue": false,
+        "sample_head": "`typing`  — Support for type hints[¶](#typing-support-for-type-hints)  Added in version 3.5.  **Source code:** [Lib/typing.py](https://github.com/python/cpython",
+        "error": null
+      }
+    ],
+    "error": null
+  },
+  {
+    "url": "https://raw.githubusercontent.com/python/cpython/main/README.rst",
+    "category": "github",
+    "fetch_ok": true,
+    "fetch_status": 200,
+    "raw_html_chars": 8906,
+    "raw_html_tokens": 2031,
+    "dom_headings": {
+      "h1": 0,
+      "h2": 0,
+      "h3": 0,
+      "h4": 0,
+      "h5": 0,
+      "h6": 0,
+      "total": 0
+    },
+    "rows": [
+      {
+        "name": "P0_raw",
+        "tokens": 2031,
+        "chars": 8906,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "This is Python version 3.15.0 alpha 8 =====================================  .. image:: https://github.com/python/cpython/actions/workflows/build.yml/badge.svg?",
+        "error": null
+      },
+      {
+        "name": "P1_readability_md",
+        "tokens": 1808,
+        "chars": 8070,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "This is Python version 3.15.0 alpha 8 ===================================== .. image:: https://github.com/python/cpython/actions/workflows/build.yml/badge.svg?b",
+        "error": null
+      },
+      {
+        "name": "P2_clean_html_safe",
+        "tokens": 2013,
+        "chars": 8957,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "<span>This is Python version 3.15.0 alpha 8 =====================================  .. image:: https://github.com/python/cpython/actions/workflows/build.yml/badg",
+        "error": null
+      },
+      {
+        "name": "P2b_clean_html_aggressive",
+        "tokens": 2013,
+        "chars": 8957,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "<span>This is Python version 3.15.0 alpha 8 =====================================  .. image:: https://github.com/python/cpython/actions/workflows/build.yml/badg",
+        "error": null
+      },
+      {
+        "name": "P3_clean_md",
+        "tokens": 1808,
+        "chars": 8070,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "This is Python version 3.15.0 alpha 8 ===================================== .. image:: https://github.com/python/cpython/actions/workflows/build.yml/badge.svg?b",
+        "error": null
+      },
+      {
+        "name": "P3b_clean_md_aggressive",
+        "tokens": 1808,
+        "chars": 8070,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "This is Python version 3.15.0 alpha 8 ===================================== .. image:: https://github.com/python/cpython/actions/workflows/build.yml/badge.svg?b",
+        "error": null
+      },
+      {
+        "name": "P4_trafilatura",
+        "tokens": 0,
+        "chars": 0,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "",
+        "error": null
+      }
+    ],
+    "error": null
+  },
+  {
+    "url": "https://github.com/anthropics/anthropic-sdk-python",
+    "category": "github",
+    "fetch_ok": true,
+    "fetch_status": 200,
+    "raw_html_chars": 321960,
+    "raw_html_tokens": 127018,
+    "dom_headings": {
+      "h1": 5,
+      "h2": 18,
+      "h3": 12,
+      "h4": 0,
+      "h5": 0,
+      "h6": 0,
+      "total": 35
+    },
+    "rows": [
+      {
+        "name": "P0_raw",
+        "tokens": 127018,
+        "chars": 321960,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "      <!DOCTYPE html> <html   lang=\"en\"      data-color-mode=\"auto\" data-light-theme=\"light\" data-dark-theme=\"dark\"   data-a11y-animated-images=\"system\" data-a1",
+        "error": null
+      },
+      {
+        "name": "P1_readability_md",
+        "tokens": 333,
+        "chars": 1126,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "[![PyPI version](https://camo.githubusercontent.com/235acf1b166b8c9131d9ed3a734ac97201303a6b6c97096d2aad3424d98609b8/68747470733a2f2f696d672e736869656c64732e696",
+        "error": null
+      },
+      {
+        "name": "P2_clean_html_safe",
+        "tokens": 31050,
+        "chars": 114637,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "<body class=\"logged-out env-production page-responsive\" style=\"word-wrap: break-word;\">  <div data-turbo-body class=\"logged-out env-production page-responsive\" ",
+        "error": null
+      },
+      {
+        "name": "P2b_clean_html_aggressive",
+        "tokens": 9750,
+        "chars": 32330,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "<body>  <div data-turbo-body>  <div role=\"region\" data-turbo-permanent></div>     <div>  <a href=\"#start-of-content\" data-skip-target-assigned=\"false\">Skip to c",
+        "error": null
+      },
+      {
+        "name": "P3_clean_md",
+        "tokens": 4010,
+        "chars": 14822,
+        "headings_md_total": 33,
+        "headings_md_levels": {
+          "h1": 5,
+          "h2": 16,
+          "h3": 12,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 33
+        },
+        "has_script_residue": false,
+        "sample_head": "[Skip to content](#start-of-content)  ## Navigation Menu  [Sign in](/login?return_to=https%3A%2F%2Fgithub.com%2Fanthropics%2Fanthropic-sdk-python)  Appearance s",
+        "error": null
+      },
+      {
+        "name": "P3b_clean_md_aggressive",
+        "tokens": 2332,
+        "chars": 8277,
+        "headings_md_total": 25,
+        "headings_md_levels": {
+          "h1": 1,
+          "h2": 13,
+          "h3": 11,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 25
+        },
+        "has_script_residue": false,
+        "sample_head": "[Skip to content](#start-of-content)  You signed in with another tab or window. Reload to refresh your session. You signed out in another tab or window. Reload ",
+        "error": null
+      },
+      {
+        "name": "P4_trafilatura",
+        "tokens": 207,
+        "chars": 790,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "The Claude SDK for Python provides access to the [Claude API](https://docs.anthropic.com/en/api/) from Python applications.  Full documentation is available at ",
+        "error": null
+      }
+    ],
+    "error": null
+  },
+  {
+    "url": "https://news.ycombinator.com/",
+    "category": "news",
+    "fetch_ok": false,
+    "fetch_status": null,
+    "raw_html_chars": 0,
+    "raw_html_tokens": 0,
+    "dom_headings": {},
+    "rows": [],
+    "error": "fetch: FetchError: HTTP_ERROR: Failed to perform, curl: (35) TLS connect error: error:00000000:invalid library (0):OPENSSL_internal:invalid library (0). See https://curl.se/libcurl/c/libcurl-errors.html first for more details."
+  },
+  {
+    "url": "https://lite.cnn.com/",
+    "category": "news",
+    "fetch_ok": true,
+    "fetch_status": 200,
+    "raw_html_chars": 339281,
+    "raw_html_tokens": 92505,
+    "dom_headings": {
+      "h1": 0,
+      "h2": 0,
+      "h3": 0,
+      "h4": 0,
+      "h5": 0,
+      "h6": 0,
+      "total": 0
+    },
+    "rows": [
+      {
+        "name": "P0_raw",
+        "tokens": 92505,
+        "chars": 339281,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": true,
+        "sample_head": "  <!DOCTYPE html> <html lang=\"en\" data-layout-uri=\"cms.cnn.com/_layouts/layout-homepage/instances/cnnlite-v1@published\">   <head><style>:root{--primitive-color-",
+        "error": null
+      },
+      {
+        "name": "P1_readability_md",
+        "tokens": 0,
+        "chars": 0,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "",
+        "error": null
+      },
+      {
+        "name": "P2_clean_html_safe",
+        "tokens": 5830,
+        "chars": 20025,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "<body class=\"cnn\">  <header class=\"header--lite\">  <a href=\"/\" class=\"title\">CNN</a>  <span>5/5/2026</span> </header>   <div class=\"layout-homepage__lite\">  <di",
+        "error": null
+      },
+      {
+        "name": "P2b_clean_html_aggressive",
+        "tokens": 5098,
+        "chars": 17361,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "<body>  <div>  <div data-uri=\"cms.cnn.com/_components/static/instances/cnnlite-v1@published\" data-unselectable=\"true\">  <section data-tabcontent=\"Content\" data-",
+        "error": null
+      },
+      {
+        "name": "P3_clean_md",
+        "tokens": 4128,
+        "chars": 14811,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "[CNN](/) 5/5/2026  Latest Stories  * [How traffic through the Strait of Hormuz shrank to a trickle – a visual deep dive](/2026/04/29/world/iran-war-gulf-hormuz-",
+        "error": null
+      },
+      {
+        "name": "P3b_clean_md_aggressive",
+        "tokens": 4036,
+        "chars": 14495,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "Latest Stories  * [How traffic through the Strait of Hormuz shrank to a trickle – a visual deep dive](/2026/04/29/world/iran-war-gulf-hormuz-shipping-maps-intl-",
+        "error": null
+      },
+      {
+        "name": "P4_trafilatura",
+        "tokens": 4028,
+        "chars": 14495,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "Latest Stories  - [How traffic through the Strait of Hormuz shrank to a trickle – a visual deep dive](/2026/04/29/world/iran-war-gulf-hormuz-shipping-maps-intl-",
+        "error": null
+      }
+    ],
+    "error": null
+  },
+  {
+    "url": "https://react.dev/learn",
+    "category": "spa",
+    "fetch_ok": true,
+    "fetch_status": 200,
+    "raw_html_chars": 265032,
+    "raw_html_tokens": 91905,
+    "dom_headings": {
+      "h1": 1,
+      "h2": 12,
+      "h3": 3,
+      "h4": 0,
+      "h5": 0,
+      "h6": 0,
+      "total": 16
+    },
+    "rows": [
+      {
+        "name": "P0_raw",
+        "tokens": 91905,
+        "chars": 265032,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": true,
+        "sample_head": "<!DOCTYPE html><html lang=\"en\" dir=\"ltr\"><head><meta charSet=\"utf-8\" data-next-head=\"\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" data",
+        "error": null
+      },
+      {
+        "name": "P1_readability_md",
+        "tokens": 3317,
+        "chars": 13574,
+        "headings_md_total": 12,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 11,
+          "h3": 1,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 12
+        },
+        "has_script_residue": true,
+        "sample_head": "Welcome to the React documentation! This page will give you an introduction to 80% of the React concepts that you will use on a daily basis.  ### You will learn",
+        "error": null
+      },
+      {
+        "name": "P2_clean_html_safe",
+        "tokens": 30545,
+        "chars": 115549,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "<body class=\"font-text font-medium antialiased text-lg bg-wash dark:bg-wash-dark text-secondary dark:text-secondary-dark leading-base\"><link rel=\"preload\" as=\"i",
+        "error": null
+      },
+      {
+        "name": "P2b_clean_html_aggressive",
+        "tokens": 11826,
+        "chars": 37485,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "<body><link rel=\"preload\" as=\"image\" imagesrcset=\"/_next/image?url=%2Fimages%2Fuwu.png&amp;w=64&amp;q=75 1x, /_next/image?url=%2Fimages%2Fuwu.png&amp;w=128&amp;",
+        "error": null
+      },
+      {
+        "name": "P3_clean_md",
+        "tokens": 4066,
+        "chars": 16381,
+        "headings_md_total": 15,
+        "headings_md_levels": {
+          "h1": 1,
+          "h2": 12,
+          "h3": 2,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 15
+        },
+        "has_script_residue": true,
+        "sample_head": "[React](/)  [v](/versions)  [Learn](/learn)  [Reference](/reference/react)  [Community](/community)  [Blog](/blog)  ### GET STARTED  * [Quick Start](/learn \"Qui",
+        "error": null
+      },
+      {
+        "name": "P3b_clean_md_aggressive",
+        "tokens": 3484,
+        "chars": 14205,
+        "headings_md_total": 13,
+        "headings_md_levels": {
+          "h1": 1,
+          "h2": 11,
+          "h3": 1,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 13
+        },
+        "has_script_residue": true,
+        "sample_head": "[Learn React](/learn)  # Quick Start  Welcome to the React documentation! This page will give you an introduction to 80% of the React concepts that you will use",
+        "error": null
+      },
+      {
+        "name": "P4_trafilatura",
+        "tokens": 3110,
+        "chars": 12876,
+        "headings_md_total": 12,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 11,
+          "h3": 1,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 12
+        },
+        "has_script_residue": true,
+        "sample_head": "Welcome to the React documentation! This page will give you an introduction to 80% of the React concepts that you will use on a daily basis.  ### You will learn",
+        "error": null
+      }
+    ],
+    "error": null
+  },
+  {
+    "url": "https://www.alltrails.com/",
+    "category": "cloudflare",
+    "fetch_ok": true,
+    "fetch_status": 200,
+    "raw_html_chars": 317767,
+    "raw_html_tokens": 113241,
+    "dom_headings": {
+      "h1": 1,
+      "h2": 17,
+      "h3": 0,
+      "h4": 0,
+      "h5": 0,
+      "h6": 0,
+      "total": 18
+    },
+    "rows": [
+      {
+        "name": "P0_raw",
+        "tokens": 113241,
+        "chars": 317767,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": true,
+        "sample_head": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><meta id=\"Viewport\" name=\"viewp",
+        "error": null
+      },
+      {
+        "name": "P1_readability_md",
+        "tokens": 29,
+        "chars": 126,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "Search by city, park, or trail name  Begin typing to search, use the up and down arrow keys to navigate, press enter to select",
+        "error": null
+      },
+      {
+        "name": "P2_clean_html_safe",
+        "tokens": 12023,
+        "chars": 37645,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "<body><div hidden=\"\"></div><header class=\"styles_header__rA9aY styles_transparent-inverted__2kxGi\"><a class=\"styles_skipToMainContentButton__EpEaT styles_button",
+        "error": null
+      },
+      {
+        "name": "P2b_clean_html_aggressive",
+        "tokens": 3574,
+        "chars": 11036,
+        "headings_md_total": 0,
+        "headings_md_levels": {
+          "h1": 0,
+          "h2": 0,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 0
+        },
+        "has_script_residue": false,
+        "sample_head": "<body><div hidden=\"\"></div><main><main><section aria-label=\"Hero carousel\"><div><div></div><div><h1>Find your next adventure</h1><div><div><div role=\"search\"><d",
+        "error": null
+      },
+      {
+        "name": "P3_clean_md",
+        "tokens": 2167,
+        "chars": 7114,
+        "headings_md_total": 10,
+        "headings_md_levels": {
+          "h1": 1,
+          "h2": 9,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 10
+        },
+        "has_script_residue": false,
+        "sample_head": "[Skip to main content](#main-content)  # Find your next adventure  Search by city, park, or trail name  Begin typing to search, use the up and down arrow keys t",
+        "error": null
+      },
+      {
+        "name": "P3b_clean_md_aggressive",
+        "tokens": 1603,
+        "chars": 5285,
+        "headings_md_total": 7,
+        "headings_md_levels": {
+          "h1": 1,
+          "h2": 6,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 7
+        },
+        "has_script_residue": false,
+        "sample_head": "# Find your next adventure  Search by city, park, or trail name  Begin typing to search, use the up and down arrow keys to navigate, press enter to select  [Exp",
+        "error": null
+      },
+      {
+        "name": "P4_trafilatura",
+        "tokens": 77,
+        "chars": 358,
+        "headings_md_total": 4,
+        "headings_md_levels": {
+          "h1": 1,
+          "h2": 3,
+          "h3": 0,
+          "h4": 0,
+          "h5": 0,
+          "h6": 0,
+          "total": 4
+        },
+        "has_script_residue": false,
+        "sample_head": "# Find your next adventure  Search by city, park, or trail name  Begin typing to search, use the up and down arrow keys to navigate, press enter to select  ## T",
+        "error": null
+      }
+    ],
+    "error": null
+  }
+]

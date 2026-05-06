@@ -1,0 +1,130 @@
+# Extended diagnostic URL set.
+#
+# Adds to bench/urls.toml:
+#  - high-traffic social sites (x.com, reddit) — login walls, SPA shells
+#  - Anthropic-owned content (blog, cookbook, docs) — articles + dev docs
+#  - additional structurally interesting pages
+
+# --- original 10 ---
+
+[[urls]]
+url = "https://en.wikipedia.org/wiki/Claude_Shannon"
+category = "wiki"
+
+[[urls]]
+url = "https://en.wikipedia.org/wiki/Transformer_(deep_learning_architecture)"
+category = "wiki"
+
+[[urls]]
+url = "https://docs.python.org/3/library/asyncio.html"
+category = "static_doc"
+
+[[urls]]
+url = "https://docs.python.org/3/library/typing.html"
+category = "static_doc"
+
+[[urls]]
+url = "https://raw.githubusercontent.com/python/cpython/main/README.rst"
+category = "github_raw"
+
+[[urls]]
+url = "https://github.com/anthropics/anthropic-sdk-python"
+category = "github_repo"
+
+[[urls]]
+url = "https://lite.cnn.com/"
+category = "news_lite"
+
+[[urls]]
+url = "https://react.dev/learn"
+category = "spa"
+
+[[urls]]
+url = "https://www.alltrails.com/"
+category = "cloudflare_spa"
+
+# --- social / high-traffic ---
+
+[[urls]]
+url = "https://x.com/AnthropicAI"
+category = "social_x"
+note = "Twitter/X — heavily JS-rendered; without login returns shell"
+
+[[urls]]
+url = "https://x.com/AnthropicAI/status/1872078117571276867"
+category = "social_x_status"
+note = "Specific tweet URL"
+
+[[urls]]
+url = "https://www.reddit.com/r/MachineLearning/"
+category = "social_reddit"
+note = "Reddit subreddit — SPA shell from www, full content from old."
+
+[[urls]]
+url = "https://old.reddit.com/r/MachineLearning/"
+category = "social_reddit_old"
+note = "Old reddit — server-rendered, much friendlier"
+
+[[urls]]
+url = "https://www.reddit.com/r/MachineLearning/comments/1f7gvyp/d_what_is_the_state_of_the_art_for_long/"
+category = "social_reddit_thread"
+note = "Specific thread"
+
+# --- Anthropic-owned ---
+
+[[urls]]
+url = "https://www.anthropic.com/news/claude-3-5-sonnet"
+category = "anthropic_news"
+note = "Anthropic news/blog post — long-form article"
+
+[[urls]]
+url = "https://www.anthropic.com/research/building-effective-agents"
+category = "anthropic_research"
+note = "Research article with deep structure"
+
+[[urls]]
+url = "https://docs.anthropic.com/en/docs/welcome"
+category = "anthropic_docs"
+note = "Anthropic developer docs landing"
+
+[[urls]]
+url = "https://docs.anthropic.com/en/docs/build-with-claude/tool-use"
+category = "anthropic_docs_long"
+note = "Long developer doc with code blocks, headings"
+
+[[urls]]
+url = "https://github.com/anthropics/anthropic-cookbook"
+category = "github_repo"
+note = "Anthropic cookbook repo page"
+
+[[urls]]
+url = "https://github.com/anthropics/anthropic-cookbook/blob/main/README.md"
+category = "github_blob"
+note = "Cookbook README rendered through GitHub blob view"
+
+# --- additional structurally interesting ---
+
+[[urls]]
+url = "https://stackoverflow.com/questions/231767/what-does-the-yield-keyword-do-in-python"
+category = "qa_so"
+note = "Stack Overflow Q&A — structured answers, code blocks"
+
+[[urls]]
+url = "https://news.ycombinator.com/item?id=43000000"
+category = "news_hn_thread"
+note = "HN comment thread — table layout"
+
+[[urls]]
+url = "https://huggingface.co/blog/llm-course"
+category = "blog_hf"
+note = "Hugging Face blog — long technical article"
+
+[[urls]]
+url = "https://substack.com/home"
+category = "spa_substack"
+note = "Substack home — SPA"
+
+[[urls]]
+url = "https://medium.com/@karpathy/yes-you-should-understand-backprop-e2f06eab496b"
+category = "blog_medium"
+note = "Medium article — paywall + SPA shenanigans"

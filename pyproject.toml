@@ -1,0 +1,50 @@
+[project]
+name = "refetch"
+version = "0.1.0"
+description = "Replaces Claude Code's built-in WebFetch and WebSearch with tools that actually work on the real web — anti-bot bypass, JS rendering, login sessions, and multi-backend search in one local server."
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.0.0",
+    "curl_cffi>=0.7.0",
+    "playwright>=1.45.0",
+    "playwright-stealth>=1.0.6",
+    "markdownify>=0.11.6",
+    "lxml>=5.0.0",
+    "tldextract>=5.1.0",
+    "tomli>=2.0.0; python_version<'3.11'",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.5.0",
+]
+bench = [
+    "tiktoken>=0.7.0",
+    "httpx>=0.27.0",
+    # diagnostic.py compares P3 (the production pipeline) against P1
+    # (readability+markdownify, the previous pipeline) and P4 (trafilatura)
+    # as long-term regression baselines. Neither is used by the package itself.
+    "readability-lxml>=0.8.1",
+    "trafilatura>=2.0.0",
+]
+
+[project.scripts]
+refetch = "refetch.cli:main"
+refetch-mcp = "refetch.server:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/refetch"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

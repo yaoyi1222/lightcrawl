@@ -1,0 +1,436 @@
+{
+  "token_strategy": "tiktoken-cl100k_base",
+  "rows": [
+    {
+      "url": "https://en.wikipedia.org/wiki/Claude_Shannon",
+      "category": "wiki",
+      "note": "Wikipedia article \u2014 historically 403'd raw httpx; tests L1 fingerprint + selector savings",
+      "selector": "#mw-content-text",
+      "outcomes": [
+        {
+          "mode": "baseline",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "httpx-raw",
+          "elapsed_ms": 4402,
+          "tokens_returned": 62763,
+          "tokens_full": 62763,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        },
+        {
+          "mode": "plus_auto",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "http",
+          "elapsed_ms": 3927,
+          "tokens_returned": 10016,
+          "tokens_full": 60512,
+          "truncated": true,
+          "dump_path": "/Users/fafa/.webfetch-plus/dumps/68c18fe60215bbd3.md",
+          "error_code": null,
+          "error_detail": null
+        },
+        {
+          "mode": "plus_selector",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "http",
+          "elapsed_ms": 3936,
+          "tokens_returned": 8083,
+          "tokens_full": 54419,
+          "truncated": true,
+          "dump_path": "/Users/fafa/.webfetch-plus/dumps/68c18fe60215bbd3.md",
+          "error_code": null,
+          "error_detail": null
+        }
+      ]
+    },
+    {
+      "url": "https://en.wikipedia.org/wiki/Transformer_(deep_learning_architecture)",
+      "category": "wiki",
+      "note": "Long wiki page \u2014 exercises dump-on-overflow",
+      "selector": "#mw-content-text",
+      "outcomes": [
+        {
+          "mode": "baseline",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "httpx-raw",
+          "elapsed_ms": 3634,
+          "tokens_returned": 71480,
+          "tokens_full": 71480,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        },
+        {
+          "mode": "plus_auto",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "http",
+          "elapsed_ms": 3650,
+          "tokens_returned": 9120,
+          "tokens_full": 50679,
+          "truncated": true,
+          "dump_path": "/Users/fafa/.webfetch-plus/dumps/56233eabf791f169.md",
+          "error_code": null,
+          "error_detail": null
+        },
+        {
+          "mode": "plus_selector",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "http",
+          "elapsed_ms": 3607,
+          "tokens_returned": 7826,
+          "tokens_full": 46977,
+          "truncated": true,
+          "dump_path": "/Users/fafa/.webfetch-plus/dumps/56233eabf791f169.md",
+          "error_code": null,
+          "error_detail": null
+        }
+      ]
+    },
+    {
+      "url": "https://docs.python.org/3/library/asyncio.html",
+      "category": "static_doc",
+      "note": "Static doc \u2014 should fit in L1 with selector",
+      "selector": "div.body",
+      "outcomes": [
+        {
+          "mode": "baseline",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "httpx-raw",
+          "elapsed_ms": 3034,
+          "tokens_returned": 1657,
+          "tokens_full": 1657,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        },
+        {
+          "mode": "plus_auto",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "http",
+          "elapsed_ms": 3272,
+          "tokens_returned": 1586,
+          "tokens_full": 1586,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        },
+        {
+          "mode": "plus_selector",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "http",
+          "elapsed_ms": 3113,
+          "tokens_returned": 992,
+          "tokens_full": 992,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        }
+      ]
+    },
+    {
+      "url": "https://docs.python.org/3/library/typing.html",
+      "category": "static_doc",
+      "note": "Very long doc \u2014 selector + overflow dump",
+      "selector": "div.body",
+      "outcomes": [
+        {
+          "mode": "baseline",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "httpx-raw",
+          "elapsed_ms": 3380,
+          "tokens_returned": 43686,
+          "tokens_full": 43686,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        },
+        {
+          "mode": "plus_auto",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "http",
+          "elapsed_ms": 3785,
+          "tokens_returned": 8041,
+          "tokens_full": 43616,
+          "truncated": true,
+          "dump_path": "/Users/fafa/.webfetch-plus/dumps/ec7a435682edb80d.md",
+          "error_code": null,
+          "error_detail": null
+        },
+        {
+          "mode": "plus_selector",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "http",
+          "elapsed_ms": 3761,
+          "tokens_returned": 8038,
+          "tokens_full": 41978,
+          "truncated": true,
+          "dump_path": "/Users/fafa/.webfetch-plus/dumps/ec7a435682edb80d.md",
+          "error_code": null,
+          "error_detail": null
+        }
+      ]
+    },
+    {
+      "url": "https://raw.githubusercontent.com/python/cpython/main/README.rst",
+      "category": "github",
+      "note": "Raw text \u2014 both should be tiny",
+      "selector": null,
+      "outcomes": [
+        {
+          "mode": "baseline",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "httpx-raw",
+          "elapsed_ms": 3371,
+          "tokens_returned": 1808,
+          "tokens_full": 1808,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        },
+        {
+          "mode": "plus_auto",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "http",
+          "elapsed_ms": 2958,
+          "tokens_returned": 1808,
+          "tokens_full": 1808,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        }
+      ]
+    },
+    {
+      "url": "https://github.com/anthropics/anthropic-sdk-python",
+      "category": "github",
+      "note": "GitHub repo page \u2014 heavy boilerplate, tests selector savings",
+      "selector": "article.markdown-body",
+      "outcomes": [
+        {
+          "mode": "baseline",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "httpx-raw",
+          "elapsed_ms": 3742,
+          "tokens_returned": 4347,
+          "tokens_full": 4347,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        },
+        {
+          "mode": "plus_auto",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "http",
+          "elapsed_ms": 3926,
+          "tokens_returned": 2546,
+          "tokens_full": 2546,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        },
+        {
+          "mode": "plus_selector",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "http",
+          "elapsed_ms": 3612,
+          "tokens_returned": 262,
+          "tokens_full": 262,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        }
+      ]
+    },
+    {
+      "url": "https://news.ycombinator.com/",
+      "category": "news",
+      "note": "HN front page \u2014 table-only layout, exercises body fallback",
+      "selector": "#hnmain",
+      "outcomes": [
+        {
+          "mode": "baseline",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "httpx-raw",
+          "elapsed_ms": 3877,
+          "tokens_returned": 3826,
+          "tokens_full": 3826,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        },
+        {
+          "mode": "plus_auto",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "http",
+          "elapsed_ms": 4894,
+          "tokens_returned": 3819,
+          "tokens_full": 3819,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        },
+        {
+          "mode": "plus_selector",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "http",
+          "elapsed_ms": 3272,
+          "tokens_returned": 3819,
+          "tokens_full": 3819,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        }
+      ]
+    },
+    {
+      "url": "https://lite.cnn.com/",
+      "category": "news",
+      "note": "Lite news \u2014 small, both should succeed",
+      "selector": null,
+      "outcomes": [
+        {
+          "mode": "baseline",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "httpx-raw",
+          "elapsed_ms": 4008,
+          "tokens_returned": 4192,
+          "tokens_full": 4192,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        },
+        {
+          "mode": "plus_auto",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "http",
+          "elapsed_ms": 4477,
+          "tokens_returned": 4174,
+          "tokens_full": 4174,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        }
+      ]
+    },
+    {
+      "url": "https://react.dev/learn",
+      "category": "spa",
+      "note": "React SPA \u2014 baseline likely returns shell, plus escalates to L2",
+      "selector": "article",
+      "outcomes": [
+        {
+          "mode": "baseline",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "httpx-raw",
+          "elapsed_ms": 3328,
+          "tokens_returned": 5778,
+          "tokens_full": 5778,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        },
+        {
+          "mode": "plus_auto",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "http",
+          "elapsed_ms": 3085,
+          "tokens_returned": 3719,
+          "tokens_full": 3719,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        },
+        {
+          "mode": "plus_selector",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "http",
+          "elapsed_ms": 3523,
+          "tokens_returned": 3483,
+          "tokens_full": 3483,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        }
+      ]
+    },
+    {
+      "url": "https://www.alltrails.com/",
+      "category": "cloudflare",
+      "note": "Cloudflare-protected \u2014 baseline 403, plus uses TLS fingerprint",
+      "selector": null,
+      "outcomes": [
+        {
+          "mode": "baseline",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "httpx-raw",
+          "elapsed_ms": 3964,
+          "tokens_returned": 9328,
+          "tokens_full": 9328,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        },
+        {
+          "mode": "plus_auto",
+          "ok": true,
+          "status_code": 200,
+          "strategy_used": "http",
+          "elapsed_ms": 3689,
+          "tokens_returned": 2195,
+          "tokens_full": 2195,
+          "truncated": false,
+          "dump_path": null,
+          "error_code": null,
+          "error_detail": null
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+# Tiny smoke set — 3 URLs covering the main contrast points.
+
+[[urls]]
+url = "https://en.wikipedia.org/wiki/Claude_Shannon"
+category = "wiki"
+selector = "#mw-content-text"
+note = "wiki — selector saving"
+
+[[urls]]
+url = "https://raw.githubusercontent.com/python/cpython/main/README.rst"
+category = "github"
+note = "raw text — both should be tiny and successful"
+
+[[urls]]
+url = "https://news.ycombinator.com/"
+category = "news"
+selector = "#hnmain"
+note = "small page — table-only layout, fallback path"

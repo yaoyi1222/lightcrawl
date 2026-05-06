@@ -1,0 +1,74 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project
+
+`refetch` is a local MCP (stdio) server that ships 7 tools: `fetch_url`, `search`, `search_and_read`, `list_backends`, `auth_login`, `auth_status`, `auth_revoke`. It is a drop-in replacement for the built-in `WebFetch` / `WebSearch` that survives Cloudflare/TLS-fingerprint blocks, JS-rendered SPAs, and login-walled pages — all in one Python process.
+
+Source layout: package lives at `src/refetch/`; tests at `tests/`; benchmark + diagnostic harness at `bench/`; the agent-facing skill at `skills/refetch/SKILL.md`.
+
+## Common commands
+
+All commands assume the repo's `.venv` is set up via `pip install -e ".[dev,bench]"` and `playwright install chromium`.
+
+```bash
+.venv/bin/pytest -q                              # full suite (fully offline, ~96 tests)
+.venv/bin/pytest tests/test_router.py -q         # one file
+.venv/bin/pytest tests/test_router.py::test_blocks_private_url   # one test
+.venv/bin/ruff check src tests bench             # lint
+
+.venv/bin/refetch auth list                # CLI: list saved profiles
+.venv/bin/refetch-mcp                      # run the MCP stdio server (entry point)
+
+# Benchmark / diagnostic (hits the network)
+.venv/bin/python -m bench.runner --urls bench/urls_smoke.toml --out bench/results/smoke.json
+.venv/bin/python -m bench.report bench/results/smoke.json > bench/results/smoke.md
+.venv/bin/python -m bench.diagnostic --urls bench/urls_extended.toml --out bench/results/diag.json
+```
+
+`pytest-asyncio` runs in `asyncio_mode = "auto"` (set in `pyproject.toml`), so `async def test_*` does not need a decorator.
+
+## Architecture
+
+The codebase has two cooperating subsystems sharing one process:
+
+```
+server.py (MCP stdio entry, 7 tools)
+  └── SearchService (search/service.py) ─── owns ───► Router (router.py)
+                                                       │
+                                                       ├─ L1: fetch_http.py  (curl_cffi, sync, run via asyncio.to_thread)
+                                                       ├─ L2: fetch_browser.py (Playwright + stealth, single Chromium / multi-context)
+                                                       └─ L3: same as L2 but loads storage_state from auth.py profile
+```
+
+**Fetch escalation policy** (`router.py`): every request goes L1 → L2 → L3 only as far as needed. The router decides escalation via two signals:
+
+1. `_should_escalate_to_browser(status, html)` — escalates on 403/429/503, on `_looks_like_challenge(html)` (CF detection: a 2-level keyword system, see `_CF_CHALLENGE_STRONG` and `_CF_CHALLENGE_WEAK` in `router.py`), and on `visible_text_ratio(html) < 0.01` for HTML > 2000 bytes (catches SPA shells).
+2. Login-wall detection in `content.py` — escalates to authed strategy if the page text matches "sign in to continue" / etc.
+
+**Single Browser, multi-context** (`fetch_browser.py`): one Chromium instance is reused for the whole process; each fetch gets a fresh `BrowserContext`. Authed fetches load a `storage_state` JSON from `~/.refetch/profiles/<name>.json`.
+
+**Profile binding** (`auth.py` + `url_safety.py`): each profile is bound to the eTLD+1 of the login URL (computed via `tldextract`). A `twitter` profile bound to `x.com` cannot fetch `attacker.com/x.com/...` — `domain_matches()` enforces this in the router before any fetch.
+
+**SSRF guard** (`url_safety.py`): every `validate_url()` call resolves the host (handling IPv4/IPv6 literals via `ipaddress.ip_address()` *before* falling back to `socket.gethostbyname()` — IPv6 literals must NOT be sent to `gethostbyname` as it returns a misleading `DNS_FAILED`). Loopback / private / link-local IPs are blocked unless `allow_private=True` or in `extra_allowlist`.
+
+**Content pipeline** (`content.py` — the most-touched module):
+- `_clean_dom(doc)` strips `<script>/<style>/<iframe>/<svg>/<form>/<img>/<noscript>/...` plus elements with `aria-hidden=true` (case-insensitive) and `style="display:none"` (case-insensitive, whitespace-tolerant). Mutating during iteration is forbidden; collect into a `to_remove` list and remove in a second pass.
+- `_select_target(doc, selector)` auto-scopes to a single `<main>` or `<article>` when present (this is what makes Wikipedia's H1 land on line 1 instead of line 95). Falls back to `<body>`.
+- `_dom_headings(target)` extracts `<h1>`–`<h6>` directly from DOM (not from rendered markdown — so inline `<code>`/`<strong>`/`<em>` formatting doesn't break extraction).
+- `_locate_headings_in_markdown` matches DOM heading text to ATX heading lines using `_strip_md_formatting()` to remove backticks/asterisks/links from the markdown side before comparison. Without this, headings with inline formatting return `line=None`.
+- `detect_spa_shell(html)` returns True if `_SPA_SHELL_PATTERNS` matches an empty `<div id="root">` / `<div id="__next">` regardless of page length, OR if there's a `<noscript>` JS warning on a small page.
+- Overflow handling: anything over `max_inline_tokens` is dumped to `~/.refetch/dumps/<sha1>.md`; the response carries `dump_path` plus the heading list with line numbers so the agent can grep the dump.
+
+**Search service** (`search/service.py`): `search_and_read` runs `search` then fans out `Router.fetch` calls via `asyncio.gather(..., return_exceptions=True)` with each fetch wrapped in a `try/except` that returns a failure dict — one crash cannot lose the other in-flight results.
+
+## Conventions and gotchas
+
+- **Errors are values, not exceptions, at the public boundary.** `Router.fetch()` and `SearchService.*` always return a dict with `ok: bool` + `error_code` (a value from `errors.py::ErrorCode`). Internal code raises `FetchError(code, detail)`; the router/service catches and converts. Don't surface raw exceptions to MCP callers.
+- **L1 timeout has a known thread leak** (Bug 6 in `bug.md`, marked wontfix): `asyncio.wait_for(asyncio.to_thread(curl_cffi.fetch, ...))` cannot cancel curl_cffi's blocking I/O. The asyncio side gives up at `l1_timeout + 1.0s`; the underlying thread continues until curl's own timeout. The auto-escalation to L2 prevents repeated leaks on the same URL. Don't try to "fix" this without migrating L1 to an async HTTP client — see the wontfix section in `bug.md` for context.
+- **DOM mutation requires a two-pass collect-then-remove.** `lxml`'s `doc.iter()` invalidates if you remove elements mid-iteration. See `_clean_dom` for the canonical pattern.
+- **No fabricated content; surface real failures.** The skill (`skills/refetch/SKILL.md`) enforces an honesty contract: when a fetch fails, return the structured `error_code` rather than papering over with training data.
+- **Tests must stay offline.** The pytest fixture in `tests/test_router.py` patches `socket.gethostbyname` and `fetch_http.fetch`; new tests should follow the same monkeypatch pattern. Network-touching code lives in `bench/` (which is opt-in and not run by `pytest`).
+- **`readability-lxml` and `trafilatura` are bench-only.** They are listed under `[bench]` extras for the diagnostic comparison harness; the production pipeline does NOT depend on them. If you find yourself importing either from `src/`, that's a bug.
+- **The benchmark + design history is in-tree.** `plan.md`, `bug.md`, `refetch.md`, `websearch.md`, `websearch_plus.md` capture diagnostic data and prior design decisions — read them before second-guessing why a thing is the way it is.

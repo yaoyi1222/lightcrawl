@@ -1,0 +1,70 @@
+# Benchmark URL set.
+#
+# Each entry has:
+#   url           — the page to fetch
+#   category      — wiki | static_doc | github | spa | cloudflare | large | news
+#   selector      — optional CSS selector hint for refetch (set what a
+#                   real model would naturally pass after seeing
+#                   suggested_selectors). Baseline never uses a selector.
+#   note          — what this URL exercises
+#
+# Both fetchers receive the SAME url. Baseline = "naive WebFetch": fetch
+# entire HTML → markdownify whole document. refetch = router with
+# readability + (optional) selector + dump-on-overflow.
+
+[[urls]]
+url = "https://en.wikipedia.org/wiki/Claude_Shannon"
+category = "wiki"
+selector = "#mw-content-text"
+note = "Wikipedia article — historically 403'd raw httpx; tests L1 fingerprint + selector savings"
+
+[[urls]]
+url = "https://en.wikipedia.org/wiki/Transformer_(deep_learning_architecture)"
+category = "wiki"
+selector = "#mw-content-text"
+note = "Long wiki page — exercises dump-on-overflow"
+
+[[urls]]
+url = "https://docs.python.org/3/library/asyncio.html"
+category = "static_doc"
+selector = "div.body"
+note = "Static doc — should fit in L1 with selector"
+
+[[urls]]
+url = "https://docs.python.org/3/library/typing.html"
+category = "static_doc"
+selector = "div.body"
+note = "Very long doc — selector + overflow dump"
+
+[[urls]]
+url = "https://raw.githubusercontent.com/python/cpython/main/README.rst"
+category = "github"
+note = "Raw text — both should be tiny"
+
+[[urls]]
+url = "https://github.com/anthropics/anthropic-sdk-python"
+category = "github"
+selector = "article.markdown-body"
+note = "GitHub repo page — heavy boilerplate, tests selector savings"
+
+[[urls]]
+url = "https://news.ycombinator.com/"
+category = "news"
+selector = "#hnmain"
+note = "HN front page — table-only layout, exercises body fallback"
+
+[[urls]]
+url = "https://lite.cnn.com/"
+category = "news"
+note = "Lite news — small, both should succeed"
+
+[[urls]]
+url = "https://react.dev/learn"
+category = "spa"
+selector = "article"
+note = "React SPA — baseline likely returns shell, plus escalates to L2"
+
+[[urls]]
+url = "https://www.alltrails.com/"
+category = "cloudflare"
+note = "Cloudflare-protected — baseline 403, plus uses TLS fingerprint"
