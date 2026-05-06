@@ -95,7 +95,7 @@ Refetch auto-escalates: L1 first, then L2 on Cloudflare blocks / empty SPA shell
 
 Refetch's content pipeline auto-scopes to `<main>`/`<article>`, strips invisible elements, and returns structured `headings: [{level, text, line}]`. The `selector` parameter targets exact content areas (e.g. `article.markdown-body` on GitHub); `output_format=text` strips markdown syntax overhead.
 
-| Site | Built-in WebFetch | Refetch default | + `selector` | + `output_format=text` | Best saving |
+| Site | Built-in WebFetch | Refetch `default` | Refetch `selector` | Refetch `output_format=text` | Best saving |
 |---|---|---|---|---|---|
 | **Wikipedia** Python | 58,000 chars | 40,000 | 40,000 | 40,000 | **31%** |
 | **GitHub** psf/requests | 17,500 chars | 8,040 | 2,069 | 1,818 | **90%** |
