@@ -53,7 +53,7 @@ Agents like Claude Code ship with basic HTTP fetch and web search. When they wor
 ## Quick start
 
 ```bash
-git clone https://github.com/your-org/refetch.git
+git clone https://github.com/yaoyi1222/Refetch.git
 cd refetch
 python3.11 -m venv .venv
 .venv/bin/pip install -e ".[dev,bench]"
