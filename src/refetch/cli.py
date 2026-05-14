@@ -37,7 +37,7 @@ def _safe_run(coro) -> int:
     except FetchError as e:
         _print({"ok": False, "error_code": e.code.value, "error_detail": e.detail})
         return 1
-    except Exception as e:  # last-resort safety net, mirrors server.py
+    except Exception as e:  # last-resort safety net
         _print({
             "ok": False,
             "error_code": ErrorCode.UNKNOWN.value,
@@ -60,7 +60,7 @@ def _cmd_auth_show(args: argparse.Namespace) -> int:
     except FetchError as e:
         _print({"ok": False, "error_code": e.code.value, "error_detail": e.detail})
         return 1
-    # Match MCP's auth_status shape: always `{ok, profiles: [...]}`, even for
+    # Same shape as `auth list`: always `{ok, profiles: [...]}`, even for
     # a single profile lookup. Skills can branch on `result.ok` uniformly.
     _print({"ok": True, "profiles": [meta.to_dict()]})
     return 0

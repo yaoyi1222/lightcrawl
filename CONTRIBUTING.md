@@ -3,12 +3,12 @@
 ## Architecture
 
 ```
-                Claude Code / any MCP client
+                Claude Code / Codex / Gemini / any agent
                       │
-                      │  stdio JSON-RPC
+                      │  Bash tool → `refetch <subcmd>` → JSON on stdout
                       ▼
 ┌───────────────────────────────────────────────────┐
-│           refetch MCP server                │
+│           refetch CLI (one Python process per invocation) │
 │                                                   │
 │   ┌─────────────────┐    ┌────────────────────┐   │
 │   │ Search Service  │    │ Fetch Router       │   │
@@ -40,6 +40,8 @@
                 └── logs/
 ```
 
+Every public CLI subcommand routes through `cli._safe_run()`, which converts a `FetchError` or any uncaught exception into the same `{"ok": false, "error_code": "...", "error_detail": "..."}` envelope. Skills parse one JSON object per invocation; exit code mirrors `ok`.
+
 **Fetch escalation policy** (`router.py`): every request goes L1 → L2 → L3 only as far as needed. The router decides escalation via two signals:
 
 1. `_should_escalate_to_browser(status, html)` — escalates on 403/429/503, on Cloudflare challenge detection (a 2-level keyword system: `_CF_CHALLENGE_STRONG` and `_CF_CHALLENGE_WEAK`), and on `visible_text_ratio(html) < 0.01` for HTML > 2000 bytes (catches SPA shells).
@@ -65,7 +67,7 @@
 
 ```
 src/refetch/
-├── server.py            # MCP stdio entry; 7 tools
+├── cli.py               # argparse entry; one async subcommand per public op + _safe_run envelope
 ├── router.py            # Strategy router (L1 → L2 → L3)
 ├── fetch_http.py        # L1: curl_cffi
 ├── fetch_browser.py     # L2: Playwright + stealth, single browser / multi context
@@ -74,7 +76,6 @@ src/refetch/
 ├── url_safety.py        # SSRF guard, eTLD+1
 ├── paths.py             # ~/.refetch/
 ├── errors.py            # ErrorCode enum
-├── cli.py               # auth subcommands
 └── search/
     ├── service.py       # search(), search_and_read()
     ├── types.py         # SearchResult, FetchHint

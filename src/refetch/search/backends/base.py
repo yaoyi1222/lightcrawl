@@ -7,7 +7,7 @@ from ..types import SearchResult
 
 class BackendError(Exception):
     """Raised by a Backend when the search fails. The caller maps this to
-    the structured `error_code` in the MCP response."""
+    the structured `error_code` in the CLI's JSON response."""
 
     def __init__(self, code: str, detail: str):
         self.code = code  # e.g. RATE_LIMITED, EMPTY_RESULTS, HTTP_ERROR, TIMEOUT

@@ -306,7 +306,7 @@ _SUCCESS_KEYS = {
 
 async def test_failure_response_has_all_success_keys(router):
     """Every failure path must emit the same top-level keys as success paths,
-    so MCP clients can do `out["metadata"]["status_code"]` unconditionally."""
+    so CLI callers can do `out["metadata"]["status_code"]` unconditionally."""
     # PDF early-reject failure
     pdf = await router.fetch(FetchRequest(url="https://example.com/x.pdf"))
     # SSRF block failure
