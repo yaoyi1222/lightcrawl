@@ -8,10 +8,25 @@ import sys
 from . import auth
 from .errors import FetchError
 from .paths import ensure_dirs
+from .router import FetchRequest, Router, WaitForArg
+from .search.service import (
+    SearchAndReadRequest,
+    SearchRequest,
+    SearchService,
+)
 
 
 def _print(obj) -> None:
     print(json.dumps(obj, ensure_ascii=False, indent=2))
+
+
+def _exit_code(result: dict) -> int:
+    """Exit 0 on `ok: true`, 1 otherwise. Skills can branch on either the
+    exit code or the JSON `error_code` field — both paths agree."""
+    return 0 if result.get("ok") else 1
+
+
+# -- auth subcommands --------------------------------------------------------
 
 
 def _cmd_auth_list(_: argparse.Namespace) -> int:
@@ -52,11 +67,201 @@ def _cmd_auth_login(args: argparse.Namespace) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
-    ensure_dirs()
-    parser = argparse.ArgumentParser(prog="refetch")
-    sub = parser.add_subparsers(dest="cmd", required=True)
+# -- fetch / search subcommands ---------------------------------------------
 
+
+def _cmd_fetch(args: argparse.Namespace) -> int:
+    return asyncio.run(_run_fetch(args))
+
+
+async def _run_fetch(args: argparse.Namespace) -> int:
+    wait_for = None
+    if args.wait_for_selector or args.wait_for_network_idle:
+        wait_for = WaitForArg(
+            selector=args.wait_for_selector,
+            network_idle=args.wait_for_network_idle,
+            timeout_ms=args.wait_for_timeout_ms,
+        )
+    req = FetchRequest(
+        url=args.url,
+        strategy=args.strategy,
+        profile=args.profile,
+        output_format=args.output_format,
+        selector=args.selector,
+        wait_for=wait_for,
+        max_inline_tokens=args.max_inline_tokens,
+        timeout_ms=args.timeout_ms,
+    )
+    router = Router()
+    try:
+        result = await router.fetch(req)
+    finally:
+        await router.close()
+    _print(result)
+    return _exit_code(result)
+
+
+def _cmd_search(args: argparse.Namespace) -> int:
+    return asyncio.run(_run_search(args))
+
+
+async def _run_search(args: argparse.Namespace) -> int:
+    req = SearchRequest(
+        query=args.query,
+        depth=args.depth,
+        backend=args.backend,
+        max_results=args.max_results,
+        time_range=(args.time_range_after, args.time_range_before),
+        profile=args.profile,
+        timeout_ms=args.timeout_ms,
+    )
+    svc = SearchService()
+    try:
+        result = await svc.search(req)
+    finally:
+        await svc.close()
+    _print(result)
+    return _exit_code(result)
+
+
+def _cmd_search_and_read(args: argparse.Namespace) -> int:
+    return asyncio.run(_run_search_and_read(args))
+
+
+async def _run_search_and_read(args: argparse.Namespace) -> int:
+    req = SearchAndReadRequest(
+        query=args.query,
+        depth=args.depth,
+        read_top_n=args.read_top_n,
+        read_max_inline_tokens=args.read_max_inline_tokens,
+        profile=args.profile,
+        timeout_ms=args.timeout_ms,
+    )
+    svc = SearchService()
+    try:
+        result = await svc.search_and_read(req)
+    finally:
+        await svc.close()
+    _print(result)
+    return _exit_code(result)
+
+
+def _cmd_list_backends(_: argparse.Namespace) -> int:
+    # list_backends is purely sync (just inspects backend config); the
+    # BrowserPool inside SearchService is lazy and isn't touched here,
+    # so we don't need to spin up an event loop just to call close().
+    svc = SearchService()
+    _print({"ok": True, "backends": svc.list_backends()})
+    return 0
+
+
+# -- argparse wiring --------------------------------------------------------
+
+
+def _add_fetch_parser(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser(
+        "fetch",
+        help="Fetch a URL with auto strategy escalation (L1 HTTP → L2 browser → L3 authed)",
+    )
+    p.add_argument("url")
+    p.add_argument(
+        "--strategy",
+        choices=["auto", "http", "browser", "authed"],
+        default="auto",
+        help="Force a fetch strategy (default: auto-escalate)",
+    )
+    p.add_argument("--profile", help="Use a saved login profile (forces L3)")
+    p.add_argument(
+        "--output-format",
+        dest="output_format",
+        choices=["markdown", "html", "text"],
+        default="markdown",
+    )
+    p.add_argument("--selector", help="CSS selector to scope content extraction")
+    p.add_argument(
+        "--wait-for-selector",
+        dest="wait_for_selector",
+        help="CSS selector to wait for before reading the page (SPAs)",
+    )
+    p.add_argument(
+        "--wait-for-network-idle",
+        dest="wait_for_network_idle",
+        action="store_true",
+        help="Wait for network idle before reading the page",
+    )
+    p.add_argument(
+        "--wait-for-timeout-ms",
+        dest="wait_for_timeout_ms",
+        type=int,
+        default=10_000,
+    )
+    p.add_argument(
+        "--max-inline-tokens",
+        dest="max_inline_tokens",
+        type=int,
+        default=8000,
+        help="Token budget for inline content; overflow goes to a dump file",
+    )
+    p.add_argument(
+        "--timeout-ms", dest="timeout_ms", type=int, default=30_000,
+    )
+    p.set_defaults(func=_cmd_fetch)
+
+
+def _add_search_parser(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("search", help="Web search via Brave/Serper/Tavily with failover")
+    p.add_argument("query")
+    p.add_argument(
+        "--depth",
+        choices=["quick", "normal", "deep"],
+        default="normal",
+    )
+    p.add_argument("--backend", help="Force a specific backend (skips failover)")
+    p.add_argument("--max-results", dest="max_results", type=int)
+    p.add_argument(
+        "--time-range-after", dest="time_range_after", help="ISO date lower bound"
+    )
+    p.add_argument(
+        "--time-range-before", dest="time_range_before", help="ISO date upper bound"
+    )
+    p.add_argument(
+        "--profile",
+        help="Scope needs_login annotation to this profile only",
+    )
+    p.add_argument("--timeout-ms", dest="timeout_ms", type=int, default=15_000)
+    p.set_defaults(func=_cmd_search)
+
+
+def _add_search_and_read_parser(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser(
+        "search-and-read",
+        help="Search + parallel-fetch top N results in one call",
+    )
+    p.add_argument("query")
+    p.add_argument("--depth", choices=["quick", "normal", "deep"], default="normal")
+    p.add_argument(
+        "--read-top-n", dest="read_top_n", type=int, default=3,
+    )
+    p.add_argument(
+        "--read-max-inline-tokens",
+        dest="read_max_inline_tokens",
+        type=int,
+        default=4000,
+    )
+    p.add_argument("--profile", help="Use saved login profile for the fetch phase")
+    p.add_argument("--timeout-ms", dest="timeout_ms", type=int, default=60_000)
+    p.set_defaults(func=_cmd_search_and_read)
+
+
+def _add_list_backends_parser(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser(
+        "list-backends",
+        help="Show which search backends have API keys configured",
+    )
+    p.set_defaults(func=_cmd_list_backends)
+
+
+def _add_auth_parser(sub: argparse._SubParsersAction) -> None:
     auth_p = sub.add_parser("auth", help="manage login profiles")
     auth_sub = auth_p.add_subparsers(dest="subcmd", required=True)
 
@@ -77,6 +282,25 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--success-selector", dest="success_selector")
     p.add_argument("--timeout-ms", dest="timeout_ms", type=int, default=5 * 60 * 1000)
     p.set_defaults(func=_cmd_auth_login)
+
+
+def main(argv: list[str] | None = None) -> int:
+    ensure_dirs()
+    parser = argparse.ArgumentParser(
+        prog="refetch",
+        description=(
+            "Refetch CLI — fetch URLs, search the web, and manage login "
+            "profiles. Every command prints a JSON object on stdout; exit "
+            "code 0 means ok=true, 1 means ok=false."
+        ),
+    )
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    _add_fetch_parser(sub)
+    _add_search_parser(sub)
+    _add_search_and_read_parser(sub)
+    _add_list_backends_parser(sub)
+    _add_auth_parser(sub)
 
     args = parser.parse_args(argv)
     return args.func(args)
