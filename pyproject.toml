@@ -11,6 +11,10 @@ dependencies = [
     "markdownify>=0.11.6",
     "lxml>=5.0.0",
     "tldextract>=5.1.0",
+    # httpx is used by all three search backends (brave/serper/tavily) and by
+    # auth._check_cdp_pages. Not optional — search and auth_login both import
+    # it at module load.
+    "httpx>=0.27.0",
     "tomli>=2.0.0; python_version<'3.11'",
 ]
 
@@ -22,7 +26,6 @@ dev = [
 ]
 bench = [
     "tiktoken>=0.7.0",
-    "httpx>=0.27.0",
     # diagnostic.py compares P3 (the production pipeline) against P1
     # (readability+markdownify, the previous pipeline) and P4 (trafilatura)
     # as long-term regression baselines. Neither is used by the package itself.
