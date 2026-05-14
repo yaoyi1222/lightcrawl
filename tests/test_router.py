@@ -249,6 +249,42 @@ def test_looks_like_binary_url_html_pages_pass():
     assert _looks_like_binary_url("https://example.com/foo.html") is False
 
 
+def test_looks_like_binary_url_pdf_with_signed_query_still_rejected():
+    """Signed S3-style PDFs add query params for auth; the path is still a PDF
+    so we keep rejecting (fetch would only return binary bytes either way)."""
+    assert _looks_like_binary_url(
+        "https://example.com/doc.pdf?Signature=abc&Expires=99"
+    ) is True
+
+
+def test_looks_like_binary_url_query_with_pdf_token_not_rejected():
+    """Per the docstring's intent: an HTML page that mentions `.pdf` in the
+    query string (path=/search) must not be misclassified as binary."""
+    assert _looks_like_binary_url("https://example.com/search?q=foo.pdf") is False
+
+
+# -- fetch_browser UA helper ------------------------------------------------
+
+
+def test_default_user_agent_matches_host_os(monkeypatch):
+    """The UA's platform token must agree with the host OS — a Linux UA on a
+    macOS host (or vice versa) is itself a bot-detection signal."""
+    from refetch import fetch_browser
+
+    monkeypatch.setattr(fetch_browser.platform, "system", lambda: "Linux")
+    ua = fetch_browser._default_user_agent()
+    assert "X11; Linux x86_64" in ua
+    assert "Chrome/" in ua
+
+    monkeypatch.setattr(fetch_browser.platform, "system", lambda: "Windows")
+    ua = fetch_browser._default_user_agent()
+    assert "Windows NT 10.0; Win64; x64" in ua
+
+    monkeypatch.setattr(fetch_browser.platform, "system", lambda: "Darwin")
+    ua = fetch_browser._default_user_agent()
+    assert "Mac OS X" in ua
+
+
 async def test_pdf_url_returns_unsupported_content_type(router):
     """PDF URL should be rejected before any network call (no attempts)."""
     out = await router.fetch(FetchRequest(url="https://arxiv.org/pdf/2301.07041.pdf"))

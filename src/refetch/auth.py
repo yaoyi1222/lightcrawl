@@ -4,12 +4,16 @@ import asyncio
 import json
 import os
 import re
+import shutil
+import socket
 import subprocess
+import sys
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+import httpx
 from playwright.async_api import async_playwright
 
 from .errors import ErrorCode, FetchError
@@ -18,8 +22,54 @@ from .url_safety import etld1
 
 LOGIN_URL_RE = re.compile(r"/(login|signin|sign-in|auth/?)(?:[/?]|$)", re.IGNORECASE)
 
-CHROME_PATH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-CDP_PORT = 9223
+CDP_PORT_DEFAULT = 9223
+
+
+def _find_chrome() -> str:
+    """Locate a Chrome/Chromium binary across platforms. Falls back to
+    Playwright's bundled Chromium if no system Chrome is found."""
+    if sys.platform == "darwin":
+        mac_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        if os.path.exists(mac_path):
+            return mac_path
+    elif sys.platform == "win32":
+        candidates = [
+            os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%LocalAppData%\Google\Chrome\Application\chrome.exe"),
+        ]
+        for c in candidates:
+            if c and os.path.exists(c):
+                return c
+    # Linux + fallback for unusual macOS/Windows installs
+    for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome"):
+        p = shutil.which(name)
+        if p:
+            return p
+    raise FetchError(
+        ErrorCode.UNKNOWN,
+        "Chrome/Chromium not found on PATH; install Google Chrome or set up "
+        "Playwright's bundled chromium with `playwright install chromium`",
+    )
+
+
+def _find_free_port(start: int = CDP_PORT_DEFAULT, span: int = 50) -> int:
+    """Bind-test a free localhost port in [start, start+span).
+
+    The port can race — another process may grab it between this check and
+    the Chrome launch. The caller's wait-for-CDP loop will surface that as a
+    startup timeout, which is the same recovery path as a slow Chrome start.
+    """
+    for port in range(start, start + span):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(("127.0.0.1", port))
+                return port
+        except OSError:
+            continue
+    raise FetchError(
+        ErrorCode.UNKNOWN, f"no free CDP port found in [{start}, {start + span})"
+    )
 
 
 @dataclass
@@ -147,12 +197,9 @@ def revoke_profile(name: str) -> bool:
 def _check_cdp_pages(port: int) -> list[dict] | None:
     """Lightweight HTTP poll — no CDP session, no browser control."""
     try:
-        r = subprocess.run(
-            ["curl", "-s", f"http://127.0.0.1:{port}/json"],
-            capture_output=True, text=True, timeout=3,
-        )
-        if r.returncode == 0 and r.stdout.strip().startswith("["):
-            return json.loads(r.stdout)
+        r = httpx.get(f"http://127.0.0.1:{port}/json", timeout=3.0)
+        if r.status_code == 200 and r.text.strip().startswith("["):
+            return r.json()
     except Exception:
         pass
     return None
@@ -179,11 +226,16 @@ async def interactive_login(
     user_data_dir = str(PROFILES / f"chrome-data-{profile}")
     os.makedirs(user_data_dir, exist_ok=True)
 
-    # 1 — Launch Chrome natively (no Playwright, no automation flags)
+    chrome_path = _find_chrome()
+    cdp_port = _find_free_port(CDP_PORT_DEFAULT)
+
+    # 1 — Launch Chrome natively (no Playwright, no automation flags).
+    # The whole flow is wrapped in try/finally so the subprocess is always
+    # reaped — including on CancelledError / KeyboardInterrupt mid-poll.
     chrome = subprocess.Popen(
         [
-            CHROME_PATH,
-            f"--remote-debugging-port={CDP_PORT}",
+            chrome_path,
+            f"--remote-debugging-port={cdp_port}",
             f"--user-data-dir={user_data_dir}",
             "--no-first-run",
             "--no-default-browser-check",
@@ -193,75 +245,78 @@ async def interactive_login(
         stderr=subprocess.DEVNULL,
     )
 
-    deadline = time.monotonic() + (timeout_ms / 1000.0)
+    try:
+        deadline = time.monotonic() + (timeout_ms / 1000.0)
 
-    # 2 — Wait for CDP endpoint to be reachable
-    for _ in range(60):
-        if time.monotonic() > deadline:
-            chrome.terminate()
-            raise FetchError(ErrorCode.TIMEOUT, "Chrome did not start in time")
-        pages = _check_cdp_pages(CDP_PORT)
-        if pages is not None:
-            break
-        await asyncio.sleep(0.5)
+        # 2 — Wait for CDP endpoint to be reachable
+        for _ in range(60):
+            if time.monotonic() > deadline:
+                raise FetchError(ErrorCode.TIMEOUT, "Chrome did not start in time")
+            pages = _check_cdp_pages(cdp_port)
+            if pages is not None:
+                break
+            await asyncio.sleep(0.5)
 
-    # 3 — Poll for login completion via lightweight HTTP (no CDP session)
-    last_url = ""
-    last_url_change = time.monotonic()
+        # 3 — Poll for login completion via lightweight HTTP (no CDP session)
+        last_url = ""
+        last_url_change = time.monotonic()
+        login_detected = False
 
-    while time.monotonic() < deadline:
-        pages = _check_cdp_pages(CDP_PORT)
-        if pages is None:
-            # Browser might have been closed
-            await asyncio.sleep(1)
-            continue
+        while time.monotonic() < deadline:
+            pages = _check_cdp_pages(cdp_port)
+            if pages is None:
+                # Browser might have been closed
+                await asyncio.sleep(1)
+                continue
 
-        # Find the first page with a real URL
-        cur = ""
-        for p in pages:
-            pu = p.get("url", "")
-            if pu and not pu.startswith("about:") and pu != "chrome://newtab/":
-                cur = pu
+            # Find the first page with a real URL
+            cur = ""
+            for p in pages:
+                pu = p.get("url", "")
+                if pu and not pu.startswith("about:") and pu != "chrome://newtab/":
+                    cur = pu
+                    break
+
+            if not cur:
+                await asyncio.sleep(1)
+                continue
+
+            if cur != last_url:
+                last_url = cur
+                last_url_change = time.monotonic()
+
+            if not LOGIN_URL_RE.search(cur) and (time.monotonic() - last_url_change) >= 3.0:
+                login_detected = True
                 break
 
-        if not cur:
             await asyncio.sleep(1)
-            continue
 
-        if cur != last_url:
-            last_url = cur
-            last_url_change = time.monotonic()
-
-        if not LOGIN_URL_RE.search(cur) and (time.monotonic() - last_url_change) >= 3.0:
-            # Login detected — now briefly connect to harvest cookies
-            break
-
-        await asyncio.sleep(1)
-
-    else:
-        chrome.terminate()
-        raise FetchError(
-            ErrorCode.TIMEOUT,
-            f"login not detected within {timeout_ms}ms",
-        )
-
-    # 4 — Brief CDP connect: grab state and disconnect immediately
-    try:
-        async with async_playwright() as pw:
-            browser = await pw.chromium.connect_over_cdp(
-                f"http://127.0.0.1:{CDP_PORT}"
+        if not login_detected:
+            raise FetchError(
+                ErrorCode.TIMEOUT,
+                f"login not detected within {timeout_ms}ms",
             )
-            contexts = browser.contexts
-            ctx = contexts[0] if contexts else await browser.new_context()
-            if ctx.pages:
-                # Navigate away from any Google OAuth page before grabbing state
-                # to avoid the brief CDP connection being detected
-                pass
-            state = await ctx.storage_state()
-            await browser.close()
-    except Exception as e:
-        chrome.terminate()
-        raise FetchError(ErrorCode.UNKNOWN, f"failed to harvest cookies: {e}") from e
 
-    chrome.terminate()
-    return save_profile(profile, state, bound)
+        # 4 — Brief CDP connect: grab state and disconnect immediately
+        try:
+            async with async_playwright() as pw:
+                browser = await pw.chromium.connect_over_cdp(
+                    f"http://127.0.0.1:{cdp_port}"
+                )
+                contexts = browser.contexts
+                ctx = contexts[0] if contexts else await browser.new_context()
+                state = await ctx.storage_state()
+                await browser.close()
+        except Exception as e:
+            raise FetchError(ErrorCode.UNKNOWN, f"failed to harvest cookies: {e}") from e
+
+        return save_profile(profile, state, bound)
+    finally:
+        try:
+            chrome.terminate()
+            chrome.wait(timeout=5)
+        except Exception:
+            try:
+                chrome.kill()
+            except Exception:
+                pass

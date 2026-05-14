@@ -58,9 +58,14 @@ _BINARY_EXTS = (
 
 
 def _looks_like_binary_url(url: str) -> bool:
-    """True if URL path ends with a known non-HTML extension. Best-effort:
-    we only match when the path is unambiguous (no query / fragment) so that
-    `?path=foo.pdf` style URLs that actually return HTML aren't mis-rejected."""
+    """True if the URL's path ends with a known non-HTML extension.
+
+    We inspect `parsed.path` only, which already excludes the query string and
+    fragment — so `https://x.com/search?q=foo.pdf` is not rejected (its path
+    is `/search`). Signed-URL params on real PDFs like
+    `https://x.com/doc.pdf?Signature=…` are still rejected, because those
+    paths really are PDFs regardless of query.
+    """
     try:
         parsed = urlparse(url)
     except ValueError:
