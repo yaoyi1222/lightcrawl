@@ -30,13 +30,13 @@ def _isolate(tmp_path, monkeypatch):
 
 
 class FakeBackend:
-    name = "fake"
     cost_per_call_usd = 0.001
 
-    def __init__(self, results=None, raise_=None, configured=True):
+    def __init__(self, results=None, raise_=None, configured=True, name="fake"):
         self._results = results or []
         self._raise = raise_
         self._configured = configured
+        self.name = name
         self.calls = 0
 
     def configured(self):
@@ -166,6 +166,158 @@ async def test_search_and_read_enforces_url_provenance():
     assert fake_fetch_calls[0] == "https://a.example/1"
     assert len(out["fetched_pages"]) == 1
     assert out["fetched_pages"][0]["content_markdown"] == "body"
+    await svc.close()
+
+
+async def test_search_falls_over_to_next_backend_on_rate_limit():
+    """A rate-limited primary backend must trigger failover to the next
+    configured backend (the README advertises this behavior)."""
+    primary = FakeBackend(
+        name="brave", raise_=BackendError("RATE_LIMITED", "brave: 429"),
+    )
+    secondary = FakeBackend(
+        name="tavily",
+        results=[SearchResult(rank=1, title="T", url="https://t.example/1",
+                              snippet="s")],
+    )
+    svc = _svc(primary, secondary)
+    out = await svc.search(SearchRequest(query="x"))
+    assert out["ok"] is True
+    assert out["backend_used"] == "tavily"
+    assert primary.calls == 1
+    assert secondary.calls == 1
+    await svc.close()
+
+
+async def test_search_failover_skips_unconfigured_backends():
+    primary = FakeBackend(
+        name="brave", raise_=BackendError("TIMEOUT", "brave timeout"),
+    )
+    unconfigured = FakeBackend(name="serper", configured=False)
+    fallback = FakeBackend(
+        name="tavily",
+        results=[SearchResult(rank=1, title="T", url="https://t.example/1",
+                              snippet="s")],
+    )
+    svc = _svc(primary, unconfigured, fallback)
+    out = await svc.search(SearchRequest(query="x"))
+    assert out["ok"] is True
+    assert out["backend_used"] == "tavily"
+    assert unconfigured.calls == 0
+    await svc.close()
+
+
+async def test_search_failover_stops_on_non_retryable_error():
+    """A pinned-backend or auth-style error should not trigger failover."""
+    primary = FakeBackend(
+        name="brave", raise_=BackendError("PROVIDER_AUTH", "bad key"),
+    )
+    secondary = FakeBackend(
+        name="tavily",
+        results=[SearchResult(rank=1, title="T", url="https://t.example/1",
+                              snippet="s")],
+    )
+    svc = _svc(primary, secondary)
+    out = await svc.search(SearchRequest(query="x"))
+    assert out["ok"] is False
+    assert out["error_code"] == "PROVIDER_AUTH"
+    assert secondary.calls == 0  # never tried
+    await svc.close()
+
+
+async def test_search_explicit_backend_does_not_failover():
+    """When the caller pins a backend, honor it — don't auto-failover."""
+    primary = FakeBackend(
+        name="brave", raise_=BackendError("RATE_LIMITED", "brave: 429"),
+    )
+    secondary = FakeBackend(
+        name="tavily",
+        results=[SearchResult(rank=1, title="T", url="https://t.example/1",
+                              snippet="s")],
+    )
+    svc = _svc(primary, secondary)
+    out = await svc.search(SearchRequest(query="x", backend="brave"))
+    assert out["ok"] is False
+    assert out["error_code"] == "RATE_LIMITED"
+    assert secondary.calls == 0
+    await svc.close()
+
+
+async def test_search_all_backends_fail_returns_last_failure():
+    primary = FakeBackend(
+        name="brave", raise_=BackendError("RATE_LIMITED", "brave: 429"),
+    )
+    secondary = FakeBackend(
+        name="tavily", raise_=BackendError("TIMEOUT", "tavily timeout"),
+    )
+    svc = _svc(primary, secondary)
+    out = await svc.search(SearchRequest(query="x"))
+    assert out["ok"] is False
+    assert out["error_code"] == "TIMEOUT"
+    await svc.close()
+
+
+async def test_search_profile_param_scopes_needs_login_annotation(tmp_path):
+    """Passing profile='twitter' should only mark x.com results as needs_login,
+    even if other active profiles exist for different domains."""
+    auth_mod.save_profile("twitter", {"cookies": [], "origins": []}, "x.com")
+    auth_mod.save_profile("linkedin", {"cookies": [], "origins": []}, "linkedin.com")
+    fake = FakeBackend(results=[
+        SearchResult(rank=1, title="T", url="https://x.com/foo", snippet="s"),
+        SearchResult(rank=2, title="L", url="https://linkedin.com/in/bar", snippet="s"),
+    ])
+    svc = _svc(fake)
+    out = await svc.search(SearchRequest(query="x", profile="twitter"))
+    by_url = {r["url"]: r for r in out["results"]}
+    assert by_url["https://x.com/foo"]["fetch_hint"]["needs_login"] is True
+    assert by_url["https://linkedin.com/in/bar"]["fetch_hint"]["needs_login"] is False
+    await svc.close()
+
+
+async def test_search_no_profile_marks_any_active_domain(tmp_path):
+    """With profile unset, the legacy behavior — flag any active profile's
+    domain — must still hold so existing callers don't regress."""
+    auth_mod.save_profile("twitter", {"cookies": [], "origins": []}, "x.com")
+    fake = FakeBackend(results=[
+        SearchResult(rank=1, title="T", url="https://x.com/foo", snippet="s"),
+    ])
+    svc = _svc(fake)
+    out = await svc.search(SearchRequest(query="x"))
+    assert out["results"][0]["fetch_hint"]["needs_login"] is True
+    await svc.close()
+
+
+async def test_search_and_read_fetch_timeout_floor_is_15s(monkeypatch):
+    """Even when the search ate most of the budget, fetches must get
+    at least MIN_FETCH_TIMEOUT_MS so L2 has room to launch a browser."""
+    from refetch.search.service import MIN_FETCH_TIMEOUT_MS
+
+    fake = FakeBackend(results=[
+        SearchResult(rank=1, title="A", url="https://a.example/1", snippet="s"),
+    ])
+    svc = _svc(fake)
+
+    seen_timeouts: list[int] = []
+
+    async def fake_router_fetch(req):
+        seen_timeouts.append(req.timeout_ms)
+        return {
+            "ok": True, "url": req.url, "final_url": req.url,
+            "strategy_used": "http", "title": "A", "content": "ok",
+            "content_truncated": False, "dump_path": None,
+            "metadata": {"status_code": 200, "elapsed_ms": 1,
+                         "needs_js_hint": False, "suggested_selectors": []},
+            "attempts": [],
+        }
+
+    with patch.object(svc.router, "fetch", new=fake_router_fetch):
+        # Total budget 10s — less than the floor — so the fetch must still
+        # get MIN_FETCH_TIMEOUT_MS rather than a sub-second leftover.
+        await svc.search_and_read(
+            SearchAndReadRequest(query="x", read_top_n=1, timeout_ms=10_000)
+        )
+
+    assert seen_timeouts == [MIN_FETCH_TIMEOUT_MS]
     await svc.close()
 
 

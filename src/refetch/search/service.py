@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 
 from .. import auth as auth_mod
-from ..errors import ErrorCode
+from ..errors import ErrorCode, FetchError
 from ..paths import DUMPS
 from ..router import FetchRequest, Router
 from ..url_safety import etld1
@@ -24,6 +24,17 @@ from .types import (
 
 SNIPPET_TARGET = 200       # below this we try to enrich
 SNIPPET_GOAL = 300         # target length to make most fetches unnecessary
+
+# Minimum per-fetch budget inside search_and_read. L2 browser fetches need
+# ~10-15s for launch + load + JS; 5s reliably times them out. Setting the
+# floor at 15s matches `Router._fetch_browser_only`'s own L2 cap.
+MIN_FETCH_TIMEOUT_MS = 15_000
+
+# Codes that are worth retrying on a different backend. PROVIDER_ERROR is
+# included because Brave/Serper sometimes surface 5xx with that code.
+_RETRYABLE_BACKEND_CODES = frozenset({
+    "RATE_LIMITED", "TIMEOUT", "HTTP_ERROR", "PROVIDER_ERROR",
+})
 
 
 @dataclass
@@ -91,11 +102,40 @@ class SearchService:
                 return n, b
         raise BackendError("NO_BACKEND_CONFIGURED", "no search backend has credentials configured")
 
-    def _annotate(self, results: list[SearchResult]) -> list[AnnotatedResult]:
-        # Cheap hints only.
-        active_domains = {
-            p.bound_domain for p in auth_mod.list_profiles() if p.status == "active"
-        }
+    def _ordered_backends(self, primary: str) -> list[tuple[str, Backend]]:
+        """Return [(name, backend), ...] in failover order: primary first,
+        then any other configured backends in registration order. Unconfigured
+        backends are skipped so we never spend a TIMEOUT failing against one."""
+        out: list[tuple[str, Backend]] = []
+        primary_backend = self._backends.get(primary)
+        if primary_backend is not None:
+            out.append((primary, primary_backend))
+        for n, b in self._backends.items():
+            if n == primary:
+                continue
+            if getattr(b, "configured", lambda: True)():
+                out.append((n, b))
+        return out
+
+    def _annotate(
+        self, results: list[SearchResult], profile: str | None = None
+    ) -> list[AnnotatedResult]:
+        # Cheap hints only. When the caller specified a profile, only annotate
+        # results that match THAT profile's bound domain — otherwise an agent
+        # passing profile="twitter" would see needs_login=true on linkedin.com
+        # results too. With no profile, fall back to all active profiles.
+        if profile:
+            try:
+                meta = auth_mod.get_profile(profile)
+                active_domains = (
+                    {meta.bound_domain} if meta.status == "active" else set()
+                )
+            except FetchError:
+                active_domains = set()
+        else:
+            active_domains = {
+                p.bound_domain for p in auth_mod.list_profiles() if p.status == "active"
+            }
         annotated = []
         for r in results:
             target_etld1 = etld1(r.url)
@@ -137,55 +177,81 @@ class SearchService:
         attempts: list[dict] = []
 
         try:
-            name, backend = self._pick_backend(req.backend)
+            primary_name, _ = self._pick_backend(req.backend)
         except BackendError as e:
             return _failure(req.query, e.code, e.detail, attempts, [])
 
+        # If the caller pinned a backend explicitly, honor it without failover
+        # (their choice was deliberate). Otherwise iterate through configured
+        # backends in registration order so a rate-limited Brave doesn't kill
+        # the search when Tavily is also configured — the README and SKILL
+        # advertise this as "automatic failover".
+        if req.backend:
+            ordered = [(primary_name, self._backends[primary_name])]
+        else:
+            ordered = self._ordered_backends(primary_name)
+
         started = time.monotonic()
-        try:
-            raw = await asyncio.wait_for(
-                backend.search(
-                    req.query,
-                    max_results=max_results,
-                    time_range=req.time_range,
-                    timeout=min(timeout_s, 10.0),
-                ),
-                timeout=timeout_s,
-            )
-            attempts.append({"backend": name, "result": f"{len(raw)} results"})
-        except asyncio.TimeoutError:
-            attempts.append({"backend": name, "result": "timeout"})
+        last_failure: tuple[str, str, str] | None = None  # (name, code, detail)
+        raw = None
+        used_name: str | None = None
+        used_backend: Backend | None = None
+        for name, backend in ordered:
+            try:
+                raw = await asyncio.wait_for(
+                    backend.search(
+                        req.query,
+                        max_results=max_results,
+                        time_range=req.time_range,
+                        timeout=min(timeout_s, 10.0),
+                    ),
+                    timeout=timeout_s,
+                )
+                attempts.append({"backend": name, "result": f"{len(raw)} results"})
+                used_name, used_backend = name, backend
+                break
+            except asyncio.TimeoutError:
+                attempts.append({"backend": name, "result": "timeout"})
+                last_failure = (name, "TIMEOUT", f"backend {name} timed out")
+                continue
+            except BackendError as e:
+                attempts.append({"backend": name, "result": e.code.lower()})
+                last_failure = (name, e.code, e.detail)
+                if e.code not in _RETRYABLE_BACKEND_CODES:
+                    # Non-retryable (auth, config, etc.) — stop trying others.
+                    break
+                continue
+
+        if raw is None or used_backend is None or used_name is None:
+            # All backends failed. Surface the last failure's code/detail.
+            if last_failure is None:
+                return _failure(req.query, "NO_BACKEND_CONFIGURED", "no backends attempted", attempts, [])
+            _, code, detail = last_failure
             return _failure(
-                req.query, "TIMEOUT", f"backend {name} timed out", attempts,
-                [f"increase timeout_ms (current {req.timeout_ms})"],
-            )
-        except BackendError as e:
-            attempts.append({"backend": name, "result": e.code.lower()})
-            return _failure(
-                req.query, e.code, e.detail, attempts,
-                _suggest_on_failure(e.code, list(self._backends.keys())),
+                req.query, code, detail, attempts,
+                _suggest_on_failure(code, list(self._backends.keys())),
             )
 
         if not raw:
             return _failure(
-                req.query, "EMPTY_RESULTS", f"backend {name} returned no results",
+                req.query, "EMPTY_RESULTS", f"backend {used_name} returned no results",
                 attempts,
                 ["rewrite the query", "try a broader phrasing", "try a different backend"],
             )
 
-        annotated = self._annotate(raw)
+        annotated = self._annotate(raw, profile=req.profile)
         self._enhance_snippets(annotated)
 
         elapsed_ms = int((time.monotonic() - started) * 1000)
         return {
             "ok": True,
             "query": req.query,
-            "backend_used": name,
+            "backend_used": used_name,
             "depth_used": req.depth,
             "results": [r.to_dict() for r in annotated],
             "metadata": {
                 "elapsed_ms": elapsed_ms,
-                "estimated_cost_usd": round(backend.cost_per_call_usd, 4),
+                "estimated_cost_usd": round(used_backend.cost_per_call_usd, 4),
                 "result_count": len(annotated),
             },
         }
@@ -206,7 +272,7 @@ class SearchService:
 
         # Step 2: fan out fetches in parallel, sharing the same BrowserPool.
         fetch_started = time.monotonic()
-        remaining_ms = max(5_000, req.timeout_ms - search_elapsed)
+        remaining_ms = max(MIN_FETCH_TIMEOUT_MS, req.timeout_ms - search_elapsed)
 
         async def fetch_one(url: str) -> tuple[str, dict]:
             try:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import platform
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -18,6 +19,28 @@ _STEALTH = Stealth()
 from .errors import ErrorCode, FetchError
 
 DEFAULT_TIMEOUT = 15.0
+
+
+def _default_user_agent() -> str:
+    """Build a Chrome 120 UA whose platform token matches the host OS, so the
+    UA doesn't contradict the JS-visible navigator.platform that stealth
+    exposes — UA/platform mismatch is itself a bot-detection signal."""
+    sysname = platform.system()
+    if sysname == "Linux":
+        os_token = "X11; Linux x86_64"
+    elif sysname == "Windows":
+        os_token = "Windows NT 10.0; Win64; x64"
+    else:
+        # Darwin + unknown -> macOS UA (the project's prior default)
+        os_token = "Macintosh; Intel Mac OS X 10_15_7"
+    return (
+        f"Mozilla/5.0 ({os_token}) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    )
+
+
+_DEFAULT_UA = _default_user_agent()
 
 
 @dataclass
@@ -62,11 +85,7 @@ class BrowserPool:
         async with self._sem:
             ctx = await browser.new_context(
                 storage_state=storage_state,
-                user_agent=(
-                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 Safari/537.36"
-                ),
+                user_agent=_DEFAULT_UA,
                 viewport={"width": 1280, "height": 800},
             )
             try:
