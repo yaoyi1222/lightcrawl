@@ -15,8 +15,8 @@ Fetch:
 - `refetch fetch <url> [--strategy ...] [--profile ...] [--output-format ...] [--selector ...] [--wait-for-selector ...] [--max-inline-tokens ...] [--timeout-ms ...]`
 
 Search:
-- `refetch search <query> [--depth quick|normal|deep] [--backend ...] [--profile ...] [--max-results N]`
-- `refetch search-and-read <query> [--depth ...] [--read-top-n N] [--profile ...]`
+- `refetch search <query> [--depth quick|normal|deep] [--backend ...] [--max-results N] [--time-range-after YYYY-MM-DD] [--time-range-before YYYY-MM-DD] [--profile ...] [--timeout-ms N]`
+- `refetch search-and-read <query> [--depth ...] [--read-top-n N] [--read-max-inline-tokens N] [--profile ...] [--timeout-ms N]`
 - `refetch list-backends`
 
 Auth (shared by fetch and search):

@@ -89,7 +89,9 @@ def test_fetch_failure_exits_one():
 
 def test_fetch_closes_router_even_on_failure():
     """We always tear down the BrowserPool — otherwise a one-shot CLI
-    invocation leaks a Chromium subprocess on exit."""
+    invocation leaks a Chromium subprocess on exit. The unexpected
+    exception is converted to an error-envelope by _safe_run, but
+    Router.close() must still run via the inner try/finally."""
     close_mock = AsyncMock()
 
     async def boom(*_a, **_kw):
@@ -98,9 +100,10 @@ def test_fetch_closes_router_even_on_failure():
     with patch("refetch.cli.Router") as RouterCls:
         RouterCls.return_value.fetch = boom
         RouterCls.return_value.close = close_mock
-        with pytest.raises(RuntimeError):
-            _run(["fetch", "https://example.com/"])
+        rc, out = _run(["fetch", "https://example.com/"])
     close_mock.assert_awaited_once()
+    assert rc == 1
+    assert out["error_code"] == "UNKNOWN"
 
 
 def test_fetch_passes_wait_for_selector_through():
@@ -216,7 +219,65 @@ def test_search_and_read_passes_args_through():
 # -- auth (existing commands; smoke test the entry point still works) -------
 
 
-def test_auth_list_empty():
+def test_auth_list_empty_has_ok_envelope():
+    """`auth list` must include `ok: true` so skills can branch on it
+    uniformly across all commands (matches MCP's auth_status shape)."""
     rc, out = _run(["auth", "list"])
     assert rc == 0
-    assert out == {"profiles": []}
+    assert out == {"ok": True, "profiles": []}
+
+
+def test_auth_show_wraps_single_profile_in_profiles_array():
+    """`auth show <name>` must return the same shape as `auth list` —
+    `{ok: true, profiles: [meta]}` — not a bare meta dict."""
+    from refetch import auth as auth_mod
+    auth_mod.save_profile("twitter", {"cookies": [], "origins": []}, "x.com")
+
+    rc, out = _run(["auth", "show", "twitter"])
+    assert rc == 0
+    assert out["ok"] is True
+    assert isinstance(out["profiles"], list)
+    assert len(out["profiles"]) == 1
+    assert out["profiles"][0]["name"] == "twitter"
+    assert out["profiles"][0]["bound_domain"] == "x.com"
+
+
+def test_auth_show_missing_profile_returns_error_envelope():
+    rc, out = _run(["auth", "show", "nope"])
+    assert rc == 1
+    assert out["ok"] is False
+    assert out["error_code"] == "PROFILE_NOT_FOUND"
+
+
+# -- safety net -------------------------------------------------------------
+
+
+def test_unexpected_exception_converted_to_json_envelope():
+    """A surprise exception (third-party bug, OOM, etc.) inside an async
+    command must NOT print a Python traceback to stdout — it must come out
+    as the same JSON error envelope as planned failures, so skills can
+    parse every CLI invocation uniformly."""
+    async def boom(*_a, **_kw):
+        raise RuntimeError("kaboom")
+
+    with patch("refetch.cli.Router") as RouterCls:
+        RouterCls.return_value.fetch = boom
+        RouterCls.return_value.close = AsyncMock()
+        rc, out = _run(["fetch", "https://example.com/"])
+    assert rc == 1
+    assert out["ok"] is False
+    assert out["error_code"] == "UNKNOWN"
+    assert "kaboom" in out["error_detail"]
+
+
+def test_list_backends_calls_close_for_cleanup_uniformity():
+    """`list-backends` now routes through the same try/finally as the
+    other subcommands so SearchService.close() always runs, even if
+    a future change makes the service hold a resource."""
+    close_mock = AsyncMock()
+    with patch("refetch.cli.SearchService") as SvcCls:
+        SvcCls.return_value.list_backends = lambda: []
+        SvcCls.return_value.close = close_mock
+        rc, _ = _run(["list-backends"])
+    assert rc == 0
+    close_mock.assert_awaited_once()

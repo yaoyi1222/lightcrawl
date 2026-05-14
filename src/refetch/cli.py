@@ -6,7 +6,7 @@ import json
 import sys
 
 from . import auth
-from .errors import FetchError
+from .errors import ErrorCode, FetchError
 from .paths import ensure_dirs
 from .router import FetchRequest, Router, WaitForArg
 from .search.service import (
@@ -26,11 +26,31 @@ def _exit_code(result: dict) -> int:
     return 0 if result.get("ok") else 1
 
 
+def _safe_run(coro) -> int:
+    """Run an async subcommand, converting any uncaught exception into the
+    same `{"ok": false, "error_code": "UNKNOWN", ...}` envelope the inner
+    handlers produce. Without this, an unexpected exception (third-party
+    bug, OOM, etc.) would print a Python traceback to stdout and break
+    the JSON-per-line contract that skills rely on."""
+    try:
+        return asyncio.run(coro)
+    except FetchError as e:
+        _print({"ok": False, "error_code": e.code.value, "error_detail": e.detail})
+        return 1
+    except Exception as e:  # last-resort safety net, mirrors server.py
+        _print({
+            "ok": False,
+            "error_code": ErrorCode.UNKNOWN.value,
+            "error_detail": f"{type(e).__name__}: {e}",
+        })
+        return 1
+
+
 # -- auth subcommands --------------------------------------------------------
 
 
 def _cmd_auth_list(_: argparse.Namespace) -> int:
-    _print({"profiles": [m.to_dict() for m in auth.list_profiles()]})
+    _print({"ok": True, "profiles": [m.to_dict() for m in auth.list_profiles()]})
     return 0
 
 
@@ -40,7 +60,9 @@ def _cmd_auth_show(args: argparse.Namespace) -> int:
     except FetchError as e:
         _print({"ok": False, "error_code": e.code.value, "error_detail": e.detail})
         return 1
-    _print(meta.to_dict())
+    # Match MCP's auth_status shape: always `{ok, profiles: [...]}`, even for
+    # a single profile lookup. Skills can branch on `result.ok` uniformly.
+    _print({"ok": True, "profiles": [meta.to_dict()]})
     return 0
 
 
@@ -51,18 +73,16 @@ def _cmd_auth_revoke(args: argparse.Namespace) -> int:
 
 
 def _cmd_auth_login(args: argparse.Namespace) -> int:
-    try:
-        meta = asyncio.run(
-            auth.interactive_login(
-                profile=args.profile,
-                url=args.url,
-                success_selector=args.success_selector,
-                timeout_ms=args.timeout_ms,
-            )
-        )
-    except FetchError as e:
-        _print({"ok": False, "error_code": e.code.value, "error_detail": e.detail})
-        return 1
+    return _safe_run(_run_auth_login(args))
+
+
+async def _run_auth_login(args: argparse.Namespace) -> int:
+    meta = await auth.interactive_login(
+        profile=args.profile,
+        url=args.url,
+        success_selector=args.success_selector,
+        timeout_ms=args.timeout_ms,
+    )
     _print({"ok": True, "profile": meta.name, "bound_domain": meta.bound_domain})
     return 0
 
@@ -71,7 +91,7 @@ def _cmd_auth_login(args: argparse.Namespace) -> int:
 
 
 def _cmd_fetch(args: argparse.Namespace) -> int:
-    return asyncio.run(_run_fetch(args))
+    return _safe_run(_run_fetch(args))
 
 
 async def _run_fetch(args: argparse.Namespace) -> int:
@@ -102,7 +122,7 @@ async def _run_fetch(args: argparse.Namespace) -> int:
 
 
 def _cmd_search(args: argparse.Namespace) -> int:
-    return asyncio.run(_run_search(args))
+    return _safe_run(_run_search(args))
 
 
 async def _run_search(args: argparse.Namespace) -> int:
@@ -125,7 +145,7 @@ async def _run_search(args: argparse.Namespace) -> int:
 
 
 def _cmd_search_and_read(args: argparse.Namespace) -> int:
-    return asyncio.run(_run_search_and_read(args))
+    return _safe_run(_run_search_and_read(args))
 
 
 async def _run_search_and_read(args: argparse.Namespace) -> int:
@@ -147,11 +167,20 @@ async def _run_search_and_read(args: argparse.Namespace) -> int:
 
 
 def _cmd_list_backends(_: argparse.Namespace) -> int:
-    # list_backends is purely sync (just inspects backend config); the
-    # BrowserPool inside SearchService is lazy and isn't touched here,
-    # so we don't need to spin up an event loop just to call close().
+    return _safe_run(_run_list_backends())
+
+
+async def _run_list_backends() -> int:
+    # SearchService.list_backends() is sync today and the BrowserPool is
+    # lazy, so close() is a no-op — but routing through the same async
+    # try/finally as the other subcommands keeps the cleanup contract
+    # uniform. If anyone later adds resource allocation to
+    # SearchService.__init__ or list_backends(), this won't silently leak.
     svc = SearchService()
-    _print({"ok": True, "backends": svc.list_backends()})
+    try:
+        _print({"ok": True, "backends": svc.list_backends()})
+    finally:
+        await svc.close()
     return 0
 
 
