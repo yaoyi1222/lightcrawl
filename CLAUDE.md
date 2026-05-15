@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`refetch` is a local MCP (stdio) server that ships 7 tools: `fetch_url`, `search`, `search_and_read`, `list_backends`, `auth_login`, `auth_status`, `auth_revoke`. It is a drop-in replacement for the built-in `WebFetch` / `WebSearch` that survives Cloudflare/TLS-fingerprint blocks, JS-rendered SPAs, and login-walled pages — all in one Python process.
+`refetch` is a local CLI plus an agent-facing skill (`skills/refetch/SKILL.md`). The CLI exposes 7 subcommands: `fetch`, `search`, `search-and-read`, `list-backends`, `auth login`, `auth list`/`auth show`, `auth revoke`. Every subcommand prints a single JSON object on stdout and exits 0 on `ok: true` / 1 on `ok: false`. It is a drop-in replacement for the built-in `WebFetch` / `WebSearch` that survives Cloudflare/TLS-fingerprint blocks, JS-rendered SPAs, and login-walled pages.
 
-Source layout: package lives at `src/refetch/`; tests at `tests/`; benchmark + diagnostic harness at `bench/`; the agent-facing skill at `skills/refetch/SKILL.md`.
+Source layout: package lives at `src/refetch/`; tests at `tests/`; benchmark + diagnostic harness at `bench/`; the agent-facing skill at `skills/refetch/SKILL.md`. There is no MCP server in this repo — agents invoke `refetch` through their normal shell tool.
 
 ## Common commands
 
@@ -18,8 +18,9 @@ All commands assume the repo's `.venv` is set up via `pip install -e ".[dev,benc
 .venv/bin/pytest tests/test_router.py::test_blocks_private_url   # one test
 .venv/bin/ruff check src tests bench             # lint
 
-.venv/bin/refetch auth list                # CLI: list saved profiles
-.venv/bin/refetch-mcp                      # run the MCP stdio server (entry point)
+.venv/bin/refetch auth list                # list saved profiles
+.venv/bin/refetch fetch https://example.com/   # smoke-test the fetch pipeline
+.venv/bin/refetch list-backends            # which search backends have API keys
 
 # Benchmark / diagnostic (hits the network)
 .venv/bin/python -m bench.runner --urls bench/urls_smoke.toml --out bench/results/smoke.json
@@ -34,13 +35,16 @@ All commands assume the repo's `.venv` is set up via `pip install -e ".[dev,benc
 The codebase has two cooperating subsystems sharing one process:
 
 ```
-server.py (MCP stdio entry, 7 tools)
+cli.py (argparse entry, one async subcommand per public op)
+  ├── Router (router.py) ────────► fetch_http.py / fetch_browser.py
   └── SearchService (search/service.py) ─── owns ───► Router (router.py)
                                                        │
                                                        ├─ L1: fetch_http.py  (curl_cffi, sync, run via asyncio.to_thread)
                                                        ├─ L2: fetch_browser.py (Playwright + stealth, single Chromium / multi-context)
                                                        └─ L3: same as L2 but loads storage_state from auth.py profile
 ```
+
+Every async subcommand routes through `cli._safe_run()` which converts a `FetchError` or any uncaught exception into the same `{"ok": false, "error_code": "...", "error_detail": "..."}` envelope, so skills can parse every invocation uniformly.
 
 **Fetch escalation policy** (`router.py`): every request goes L1 → L2 → L3 only as far as needed. The router decides escalation via two signals:
 
@@ -65,7 +69,7 @@ server.py (MCP stdio entry, 7 tools)
 
 ## Conventions and gotchas
 
-- **Errors are values, not exceptions, at the public boundary.** `Router.fetch()` and `SearchService.*` always return a dict with `ok: bool` + `error_code` (a value from `errors.py::ErrorCode`). Internal code raises `FetchError(code, detail)`; the router/service catches and converts. Don't surface raw exceptions to MCP callers.
+- **Errors are values, not exceptions, at the public boundary.** `Router.fetch()` and `SearchService.*` always return a dict with `ok: bool` + `error_code` (a value from `errors.py::ErrorCode`). Internal code raises `FetchError(code, detail)`; the router/service/`cli._safe_run` catches and converts. Don't print raw tracebacks to stdout — it breaks the one-JSON-per-invocation contract skills rely on.
 - **L1 timeout has a known thread leak** (Bug 6 in `bug.md`, marked wontfix): `asyncio.wait_for(asyncio.to_thread(curl_cffi.fetch, ...))` cannot cancel curl_cffi's blocking I/O. The asyncio side gives up at `l1_timeout + 1.0s`; the underlying thread continues until curl's own timeout. The auto-escalation to L2 prevents repeated leaks on the same URL. Don't try to "fix" this without migrating L1 to an async HTTP client — see the wontfix section in `bug.md` for context.
 - **DOM mutation requires a two-pass collect-then-remove.** `lxml`'s `doc.iter()` invalidates if you remove elements mid-iteration. See `_clean_dom` for the canonical pattern.
 - **No fabricated content; surface real failures.** The skill (`skills/refetch/SKILL.md`) enforces an honesty contract: when a fetch fails, return the structured `error_code` rather than papering over with training data.

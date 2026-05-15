@@ -444,7 +444,7 @@ def test_suggested_selectors_x_com_returns_hint():
         '<html><body><div id="react-root"><div>Loading</div></div></body></html>'
     )
     sel, hint = _suggested_selectors(doc, "https://x.com/AnthropicAI")
-    assert "auth_login" in (hint or "")
+    assert "refetch auth login" in (hint or "")
     assert sel == []  # x.com has None in DOMAIN_SELECTORS, no matching selector
 
 
@@ -503,13 +503,13 @@ def test_visible_text_ratio_empty():
 
 def test_html_to_markdown_with_url_emits_selector_hint_for_x_com():
     """When URL is an x.com page without auth, selector_hint should guide
-    the agent to auth_login."""
+    the agent to `refetch auth login`."""
     html = (
         '<html><body><div id="react-root">'
         "<div>Please enable JavaScript</div></div></body></html>"
     )
     out = html_to_markdown(html, url="https://x.com/AnthropicAI")
-    assert "auth_login" in (out.selector_hint or "")
+    assert "refetch auth login" in (out.selector_hint or "")
 
 
 def test_html_to_markdown_with_url_wikipedia_selector_first():

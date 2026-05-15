@@ -221,7 +221,7 @@ def test_search_and_read_passes_args_through():
 
 def test_auth_list_empty_has_ok_envelope():
     """`auth list` must include `ok: true` so skills can branch on it
-    uniformly across all commands (matches MCP's auth_status shape)."""
+    uniformly across all commands."""
     rc, out = _run(["auth", "list"])
     assert rc == 0
     assert out == {"ok": True, "profiles": []}

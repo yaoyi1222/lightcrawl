@@ -350,7 +350,7 @@ class Router:
                 f"profile {req.profile!r} status={meta.status}",
                 attempts,
                 suggestions=[
-                    f"re-login: auth_login(profile={req.profile!r}, url=<login URL>)",
+                    f"re-login: `refetch auth login {req.profile} <login URL>`",
                 ],
             )
 
@@ -377,7 +377,7 @@ class Router:
                 f"profile {req.profile!r} no longer valid (server returned login wall)",
                 attempts,
                 suggestions=[
-                    f"re-login: auth_login(profile={req.profile!r}, url=<login URL>)",
+                    f"re-login: `refetch auth login {req.profile} <login URL>`",
                 ],
             )
 
@@ -471,8 +471,8 @@ def _failure(
     final_url: str | None = None,
     status_code: int | None = None,
 ) -> dict:
-    """Failure response. Mirrors the key set of `_success_from_*` so MCP
-    clients can rely on a stable schema regardless of ok/error path."""
+    """Failure response. Mirrors the key set of `_success_from_*` so CLI
+    callers can rely on a stable schema regardless of ok/error path."""
     strategy_used = attempts[-1].strategy if attempts else None
     return {
         "ok": False,
@@ -507,8 +507,8 @@ def _login_required(url: str, attempts: list[Attempt]) -> dict:
         "the page requires login; no profile was supplied",
         attempts,
         suggestions=[
-            "create a profile: auth_login(profile=<short site name>, url=<login URL>)",
-            "if you already have a profile, retry with fetch_url(url, profile=<name>)",
+            "create a profile: `refetch auth login <short-site-name> <login URL>`",
+            "if you already have a profile, retry with `refetch fetch <url> --profile <name>`",
         ],
     )
 
@@ -516,6 +516,9 @@ def _login_required(url: str, attempts: list[Attempt]) -> dict:
 def _blocked_suggestions(url: str, *, has_profile: bool) -> list[str]:
     out = []
     if not has_profile:
-        out.append("the site may need login: try auth_login + fetch_url(url, profile=...)")
-    out.append(f"try archive: fetch_url('https://web.archive.org/web/{url}')")
+        out.append(
+            "the site may need login: `refetch auth login <name> <login URL>` "
+            "then `refetch fetch <url> --profile <name>`"
+        )
+    out.append(f"try archive: `refetch fetch https://web.archive.org/web/{url}`")
     return out

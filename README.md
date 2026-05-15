@@ -2,11 +2,11 @@
 
 # Refetch
 
-**Refetch is a drop-in upgrade for WebFetch and WebSearch in any agent (Claude Code, Codex, Gemini CLI, Copilot CLI, etc.). It adds anti-bot bypass, JS rendering, saved login sessions, and multi-backend search — plus a content pipeline that cuts 30–90% of wasted tokens — all in a single local server.**
+**Refetch is a drop-in upgrade for WebFetch and WebSearch in any agent (Claude Code, Codex, Gemini CLI, Copilot CLI, etc.). It adds anti-bot bypass, JS rendering, saved login sessions, and multi-backend search — plus a content pipeline that cuts 30–90% of wasted tokens — all in a local CLI the agent invokes through its shell.**
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-115%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-146%20passing-brightgreen.svg)](tests/)
 [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](CONTRIBUTING.md)
 
 [English](README.md) · [中文](README_zh.md) · [CONTRIBUTING](CONTRIBUTING.md)
@@ -17,14 +17,14 @@
 
 ## Refetch
 
-Refetch is a local MCP server that upgrades your agent's ability to fetch and search the web. It supports:
+Refetch is a local CLI plus a one-file skill that upgrades your agent's ability to fetch and search the web. It supports:
 
 - ✅ Anti-bot bypass — survives Cloudflare, TLS fingerprinting, and browser challenges
 - ✅ JavaScript rendering — executes JS in a real browser for SPAs (React, Next.js, Vue)
 - ✅ Login sessions — saves and reuses authenticated sessions for login-walled pages
 - ✅ Multi-backend search — Brave, Serper, Tavily with automatic failover
 - ✅ Token-saving pipeline — auto-scopes to main content, strips 30–90% of noise
-- ✅ One-shot search+read — `search_and_read` finds results and fetches top pages in one call
+- ✅ One-shot search+read — `refetch search-and-read` finds results and fetches top pages in one call
 
 ---
 
@@ -44,8 +44,8 @@ Agents like Claude Code ship with basic HTTP fetch and web search. When they wor
 
 - ✅ **Fetch anything.** Cloudflare blocks, JS SPAs, login walls — three-layer escalation handles them all
 - ✅ **Save 30–90% tokens.** Content pipeline auto-scopes to `<main>`/`<article>`, strips noise before it hits your context. Headings with line numbers let you grep dumps by section
-- ✅ **Search + read in one call.** `search_and_read` finds results AND fetches top pages in parallel. Saves ~30%+ tokens vs manual search + N×fetch rounds
-- ✅ **Login once, reuse forever.** `auth_login` opens a real browser, you log in, session is saved. `fetch_url(url, profile="x")` uses it. Password never touches the tool
+- ✅ **Search + read in one call.** `refetch search-and-read` finds results AND fetches top pages in parallel. Saves ~30%+ tokens vs manual search + N×fetch rounds
+- ✅ **Login once, reuse forever.** `refetch auth login` opens a real browser, you log in, session is saved. `refetch fetch <url> --profile x` uses it. Password never touches the tool
 - ✅ **Your machine, your data.** Your IP, your cookies, your login sessions. Nothing goes through a third-party cloud
 
 ---
@@ -67,12 +67,26 @@ export SERPER_API_KEY=...
 export TAVILY_API_KEY=...
 ```
 
-```bash
-# Claude Code
-claude mcp add --transport stdio refetch -- /path/to/.venv/bin/refetch-mcp
+### Wire it into your agent
 
-# Codex CLI
-codex mcp add --transport stdio refetch -- /path/to/.venv/bin/refetch-mcp
+Refetch is a normal CLI on your `PATH` — every command prints one JSON object on stdout and exits 0 on success, 1 on failure. Drop the skill file into your agent so it knows when to reach for the CLI:
+
+```bash
+# Claude Code (per-project)
+mkdir -p .claude/skills/refetch
+cp skills/refetch/SKILL.md .claude/skills/refetch/SKILL.md
+
+# Claude Code (user-wide)
+mkdir -p ~/.claude/skills/refetch
+cp skills/refetch/SKILL.md ~/.claude/skills/refetch/SKILL.md
+```
+
+For other agents (Codex, Gemini, Copilot CLI), point them at the same `skills/refetch/SKILL.md` — it's a plain markdown brief that documents the CLI's commands, JSON contract, and failure-handling rules. No daemon, no MCP server, no transport setup.
+
+```bash
+# Sanity check
+.venv/bin/refetch list-backends
+.venv/bin/refetch fetch https://example.com/
 ```
 
 ---
@@ -93,9 +107,9 @@ Refetch auto-escalates: L1 first, then L2 on Cloudflare blocks / empty SPA shell
 
 ### Token efficiency
 
-Refetch's content pipeline auto-scopes to `<main>`/`<article>`, strips invisible elements, and returns structured `headings: [{level, text, line}]`. The `selector` parameter targets exact content areas (e.g. `article.markdown-body` on GitHub); `output_format=text` strips markdown syntax overhead.
+Refetch's content pipeline auto-scopes to `<main>`/`<article>`, strips invisible elements, and returns structured `headings: [{level, text, line}]`. The `--selector` flag targets exact content areas (e.g. `article.markdown-body` on GitHub); `--output-format text` strips markdown syntax overhead.
 
-| Site | Built-in WebFetch | Refetch `default` | Refetch `selector` | Refetch `output_format=text` | Best saving |
+| Site | Built-in WebFetch | Refetch `default` | Refetch `--selector` | Refetch `--output-format text` | Best saving |
 |---|---|---|---|---|---|
 | **Wikipedia** Python | 58,000 chars | 40,000 | 40,000 | 40,000 | **31%** |
 | **GitHub** psf/requests | 17,500 chars | 8,040 | 2,069 | 1,818 | **90%** |
@@ -106,7 +120,7 @@ Refetch's content pipeline auto-scopes to `<main>`/`<article>`, strips invisible
 
 ### Login sessions
 
-`auth_login` opens a **headed** Chromium window for the user to log in manually. The tool never touches passwords. Once logged in, the session is saved as a named profile bound to the eTLD+1 of the login URL, and reusable via `fetch_url(url, profile=<name>)`.
+`refetch auth login <profile> <url>` opens a **headed** Chromium window for the user to log in manually. The tool never touches passwords. Once logged in, the session is saved as a named profile bound to the eTLD+1 of the login URL, and reusable via `refetch fetch <url> --profile <name>`.
 
 ---
 
@@ -118,8 +132,8 @@ The built-in `WebSearch` returns short snippets with no fetch capability. `tavil
 
 | Scenario | Why Refetch |
 |---|---|
-| **The answer is behind a login wall** | `search_and_read(query, profile="x")` — search + authed fetch in one call |
-| **The top result is a JS-rendered SPA** | `search_and_read` automatically renders pages through the Playwright browser pipeline |
+| **The answer is behind a login wall** | `refetch search-and-read "<query>" --profile x` — search + authed fetch in one call |
+| **The top result is a JS-rendered SPA** | `search-and-read` automatically renders pages through the Playwright browser pipeline |
 | **You need diverse sources across search indexes** | 2+ backends (Brave + Tavily) with automatic failover; Brave's independent index covers 17 unique domains on a deep search vs Tavily's 10 |
 | **The page is huge — you want headings, not the whole thing** | Every fetched page includes structured `headings` with line numbers; the agent navigates by heading text and greps the dump file by line number |
 | **One backend is rate-limited** | Automatic failover to the next configured backend — no manual intervention |
@@ -132,9 +146,9 @@ Task: "Gather the latest financial information about Anthropic"
 |---|---|---|
 | **Search depth (domains)** | **17** unique domains (deep, Brave backend) | 10 unique domains (advanced depth) |
 | **Default snippet quality** | ~219 chars/result | ~148 chars/result |
-| **Login-gated sources** | ✅ `auth_login` → authed fetch of X, LinkedIn, private sites | ❌ |
+| **Login-gated sources** | ✅ `refetch auth login` → authed fetch of X, LinkedIn, private sites | ❌ |
 | **JS rendering** | ✅ Playwright browser executes JS, waits for selectors | ❌ server-side content only |
-| **Raw full-content in one call** | `search_and_read` fetches top N pages (13k chars for 3 pages) | `--include-raw-content` fetches all (240k chars for 10 pages) |
+| **Raw full-content in one call** | `search-and-read` fetches top N pages (13k chars for 3 pages) | `--include-raw-content` fetches all (240k chars for 10 pages) |
 | **AI answer synthesis** | ❌ | ✅ `--include-answer` gives direct answer |
 | **Structured output** | ✅ headings + line numbers + dump_path | ❌ raw content blob |
 | **Backend redundancy** | ✅ Brave + Tavily, auto-failover on rate-limit | ❌ single Tavily API |
@@ -142,21 +156,23 @@ Task: "Gather the latest financial information about Anthropic"
 
 **The trade-off**: For a quick factual answer, tavily's `--include-answer` is faster (one call, 2-6s, AI-synthesized answer). For research that needs **diverse sources**, **login-gated content**, **JS rendering**, or **survives a backend outage** — Refetch is the only option that covers all four.
 
-The built-in `TavilyBackend` inside Refetch uses Tavily for **search ranking only** (`include_raw_content=false`) — fetching always stays on your machine. If you also want `tavily-extract` / `tavily-crawl` / `tavily-map`, install `tavily-mcp` alongside this server; they're complementary, not competing.
+The built-in `TavilyBackend` inside Refetch uses Tavily for **search ranking only** (`include_raw_content=false`) — fetching always stays on your machine. If you also want `tavily-extract` / `tavily-crawl` / `tavily-map`, install `tavily-mcp` alongside Refetch; they're complementary, not competing.
 
-## Tools (7)
+## Commands
 
-| Tool | What it does |
+Every command prints one JSON object on stdout. Exit 0 = `ok: true`, exit 1 = `ok: false`. Full flags: `refetch <subcmd> --help`.
+
+| Command | What it does |
 |---|---|
-| `fetch_url` | Fetch a URL with auto strategy escalation. Returns markdown + headings (level/text/line) + suggested selectors + dump path on overflow. |
-| `search` | Web search returning structured results with rich snippets and a per-result `fetch_hint`. |
-| `search_and_read` | One-shot: search + parallel-fetch top N results. Saves ~30%+ tokens vs doing it manually. |
-| `list_backends` | Report which search backends are configured. |
-| `auth_login` | Open a headed browser for the user to log into a site. Saves the session as a profile. |
-| `auth_status` | List saved profiles (metadata only — never returns cookies). |
-| `auth_revoke` | Delete a profile. |
+| `refetch fetch <url>` | Fetch a URL with auto strategy escalation (L1 HTTP → L2 browser → L3 authed). Returns markdown + headings (level/text/line) + suggested selectors + dump path on overflow. |
+| `refetch search <query>` | Web search returning structured results with rich snippets and a per-result `fetch_hint`. |
+| `refetch search-and-read <query>` | One-shot: search + parallel-fetch top N results. Saves ~30%+ tokens vs doing it manually. |
+| `refetch list-backends` | Report which search backends are configured. |
+| `refetch auth login <profile> <url>` | Open a headed browser for the user to log into a site. Saves the session as a profile. |
+| `refetch auth list` / `refetch auth show <profile>` | List saved profiles (metadata only — never returns cookies). |
+| `refetch auth revoke <profile>` | Delete a profile. |
 
-Full input schemas in [`src/refetch/server.py`](src/refetch/server.py).
+The skill at [`skills/refetch/SKILL.md`](skills/refetch/SKILL.md) is the canonical reference your agent reads — flag tables, decision flow, failure-handling, honesty contract.
 
 ## Configuration
 
@@ -180,7 +196,7 @@ Environment variables:
 
 ## Search backends
 
-Three pluggable backends ship in-tree. The default is whichever is configured first in this order: **Brave → Serper → Tavily**. Override per-call via `search(backend="serper")`.
+Three pluggable backends ship in-tree. The default is whichever is configured first in this order: **Brave → Serper → Tavily**. Override per-call via `refetch search "<query>" --backend serper`.
 
 | Backend | Strength | When to pick |
 |---|---|---|
@@ -192,26 +208,26 @@ Adding a new backend is one file (~120 lines) — see `src/refetch/search/backen
 
 ### Where this fits vs hosted alternatives (e.g. `tavily-mcp`)
 
-`Refetch` and Tavily's official `tavily-mcp` are **complementary, not competing** — register both and let the agent pick:
+`Refetch` and Tavily's official `tavily-mcp` are **complementary, not competing** — Refetch runs locally as a CLI, `tavily-mcp` runs as a hosted MCP server. Use both if you want their respective strengths:
 
-| | `tavily-mcp` (cloud) | `Refetch` (local) |
+| | `tavily-mcp` (cloud) | `Refetch` (local CLI) |
 |---|---|---|
 | Search ranking + LLM snippets | ✅ best-in-class | ✅ via `TavilyBackend` (snippet-only) |
-| Login-walled pages (X, GitHub private, internal wikis) | ❌ | ✅ `auth_login` profiles |
+| Login-walled pages (X, GitHub private, internal wikis) | ❌ | ✅ `refetch auth login` profiles |
 | JS rendering + anti-bot | partial | ✅ Playwright + stealth + `curl_cffi` |
 | Cookies / IP / browser sovereignty | runs on Tavily's servers | runs on **your** machine |
 | Structured `error_code` + `dump_path` + heading line numbers | ❌ | ✅ |
 
-`Refetch`'s built-in `TavilyBackend` deliberately uses Tavily for **search ranking only** (`include_raw_content=false`) — fetching always stays on your machine, which is the whole point of the local runtime. If you want Tavily's `tavily-extract` / `tavily-crawl` / `tavily-map` capabilities too, install `tavily-mcp` alongside this server.
+`Refetch`'s built-in `TavilyBackend` deliberately uses Tavily for **search ranking only** (`include_raw_content=false`) — fetching always stays on your machine, which is the whole point of the local runtime. If you want Tavily's `tavily-extract` / `tavily-crawl` / `tavily-map` capabilities too, install `tavily-mcp` alongside Refetch.
 
 ## Security model
 
 - Profiles are stored as **plaintext `storage_state` JSON with mode `0600`** — same convention Playwright uses by default. The threat model is "another local user" (where 0600 is sufficient) and not "malware running as the same user" (where keyring + AES wouldn't help anyway). See [CONTRIBUTING.md](CONTRIBUTING.md).
-- The model never receives cookie contents — `auth_status` returns metadata only.
-- `auth_login` always uses a **headed** browser. The user types passwords and 2FA themselves; the server only calls `context.storage_state()` after a success signal.
+- The model never receives cookie contents — `refetch auth show` returns metadata only.
+- `refetch auth login` always uses a **headed** browser. The user types passwords and 2FA themselves; the CLI only calls `context.storage_state()` after a success signal.
 - Profiles are bound to the **eTLD+1** of the login URL. A `twitter` profile bound to `x.com` cannot be used to fetch `attacker.com/x.com/...`.
 - All requests pass an SSRF guard that blocks loopback, private nets, and cloud metadata IPs by default.
-- Fetched content is wrapped in `<fetched_content>` tags so the model treats it as data, not instructions.
+- Fetched content is treated as data, not instructions; the skill instructs the agent to ignore in-page directives.
 
 ## Contributing
 
