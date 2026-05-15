@@ -6,7 +6,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-128%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-146%20passing-brightgreen.svg)](tests/)
 [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](CONTRIBUTING.md)
 
 [English](README.md) · [中文](README_zh.md) · [CONTRIBUTING](CONTRIBUTING.md)

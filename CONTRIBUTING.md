@@ -111,7 +111,7 @@ Latest results (counted with tiktoken `cl100k_base`):
 
 ¹ Pages that are mostly content with little boilerplate get little extraction benefit.
 
-`Refetch auto` is `fetch_url(url)` with no hint — what the agent gets on the first call. `Refetch + selector` adds a CSS selector from the response's `suggested_selectors` field.
+`Refetch auto` is `refetch fetch <url>` with no hint — what the agent gets on the first call. `Refetch + selector` adds a `--selector` from the response's `suggested_selectors` field.
 
 Success rate: **10/10 baseline, 10/10 Refetch auto, 7/7 Refetch + selector**. Full per-URL table in [`bench/results/full_v2.md`](bench/results/full_v2.md).
 
