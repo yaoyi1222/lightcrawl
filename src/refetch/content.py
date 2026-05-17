@@ -161,9 +161,21 @@ def detect_spa_shell(html_text: str) -> bool:
     return False
 
 
-def _clean_dom(doc: lxml_html.HtmlElement) -> None:
-    """Remove non-content elements from the DOM in place."""
-    for el in doc.xpath(_REMOVE_XPATH):
+def _clean_dom(
+    doc: lxml_html.HtmlElement,
+    *,
+    extra_strip: tuple[str, ...] | list[str] = (),
+) -> None:
+    """Remove non-content elements from the DOM in place.
+
+    `extra_strip` is a list of additional tag names to strip on top of the
+    built-in `_REMOVE_TAGS` (script/style/iframe/...). Used by Firecrawl-style
+    `exclude_tags` to let callers blacklist e.g. `<nav>`/`<aside>`/`<footer>`
+    that we deliberately keep by default (see comment on `_REMOVE_TAGS`).
+    """
+    remove_tags = _REMOVE_TAGS + tuple(t.lower() for t in extra_strip)
+    remove_xpath = " | ".join(f"//{t}" for t in remove_tags)
+    for el in doc.xpath(remove_xpath):
         parent = el.getparent()
         if parent is not None:
             parent.remove(el)
@@ -328,13 +340,23 @@ def _locate_headings_in_markdown(
 
 
 def _select_target(
-    doc: lxml_html.HtmlElement, selector: str | None
+    doc: lxml_html.HtmlElement,
+    selector: str | None,
+    *,
+    include_tags: tuple[str, ...] | list[str] = (),
 ) -> lxml_html.HtmlElement:
     """Return the subtree to convert. Selector may match 0, 1, or many nodes.
     Without a selector, prefer a single <main> or <article> over <body> —
     HTML5 marks these as dominant content, so this avoids returning page
     chrome (nav menus, language lists) that would otherwise eat the
-    max_inline_tokens budget."""
+    max_inline_tokens budget.
+
+    `include_tags` is a Firecrawl-style positive tag allowlist (e.g.
+    ['article', 'aside']). When non-empty, the auto main/article scoping is
+    deliberately skipped — otherwise an `include_tags=['aside']` request would
+    return nothing on pages that have a single <main> not containing the
+    aside. The result is a synthetic wrapper containing every match in
+    document order."""
     if selector:
         try:
             nodes = doc.cssselect(selector)
@@ -348,6 +370,35 @@ def _select_target(
                 wrapper.append(n)  # moves n; we won't reuse doc afterwards
             return wrapper
 
+    if include_tags:
+        body = doc.find(".//body")
+        scope = body if body is not None else doc
+        xpath = " | ".join(f".//{t.lower()}" for t in include_tags)
+        try:
+            nodes = scope.xpath(xpath)
+        except Exception:
+            nodes = []
+        if nodes:
+            # XPath union returns document order. lxml's Element.append()
+            # *reparents* — appending a descendant after its ancestor would
+            # detach the descendant from the (already moved) ancestor's
+            # subtree, producing both duplicated and reordered output. So
+            # when both ancestor and descendant match, keep only the
+            # ancestor. Walking in document order means ancestors are seen
+            # before their descendants.
+            selected: list[lxml_html.HtmlElement] = []
+            seen_ids: set[int] = set()
+            for n in nodes:
+                if any(id(a) in seen_ids for a in n.iterancestors()):
+                    continue
+                seen_ids.add(id(n))
+                selected.append(n)
+            wrapper = lxml_html.Element("div")
+            for n in selected:
+                wrapper.append(n)
+            return wrapper
+        return scope  # no matches: fall back to whole body, not auto-scope
+
     mains = doc.xpath("//main")
     if len(mains) == 1:
         return mains[0]
@@ -359,7 +410,12 @@ def _select_target(
 
 
 def html_to_markdown(
-    html_text: str, *, selector: str | None = None, url: str | None = None
+    html_text: str,
+    *,
+    selector: str | None = None,
+    url: str | None = None,
+    include_tags: tuple[str, ...] | list[str] = (),
+    exclude_tags: tuple[str, ...] | list[str] = (),
 ) -> ExtractedContent:
     """Extract title + main content. If selector given, restrict to that subtree.
     If url given, look up domain-specific hints (selector + actionable
@@ -390,14 +446,14 @@ def html_to_markdown(
     suggestions, hint = _suggested_selectors(doc, url)
     title = (doc.findtext(".//title") or "").strip()
 
-    _clean_dom(doc)
+    _clean_dom(doc, extra_strip=exclude_tags)
 
     if not title:
         h1s = doc.xpath("//h1")
         if h1s:
             title = re.sub(r"\s+", " ", (h1s[0].text_content() or "").strip())
 
-    target = _select_target(doc, selector)
+    target = _select_target(doc, selector, include_tags=include_tags)
     target_html = lxml_html.tostring(target, encoding="unicode")
     md = markdownify(target_html, heading_style="ATX")
     md = re.sub(r"\n{3,}", "\n\n", md).strip()
