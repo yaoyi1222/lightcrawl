@@ -24,8 +24,10 @@ from .search.service import (
 _TAG_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9-]*$")
 
 
-def _clean_tags(raw: list[str] | None) -> list[str]:
-    if not raw:
+def _clean_tags(raw) -> list[str]:
+    # Reject anything that isn't a list — a bare string would otherwise
+    # iterate character-by-character, which is never the caller's intent.
+    if not isinstance(raw, list):
         return []
     out: list[str] = []
     for t in raw:

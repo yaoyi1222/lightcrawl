@@ -379,8 +379,22 @@ def _select_target(
         except Exception:
             nodes = []
         if nodes:
-            wrapper = lxml_html.Element("div")
+            # XPath union returns document order. lxml's Element.append()
+            # *reparents* — appending a descendant after its ancestor would
+            # detach the descendant from the (already moved) ancestor's
+            # subtree, producing both duplicated and reordered output. So
+            # when both ancestor and descendant match, keep only the
+            # ancestor. Walking in document order means ancestors are seen
+            # before their descendants.
+            selected: list[lxml_html.HtmlElement] = []
+            seen_ids: set[int] = set()
             for n in nodes:
+                if any(id(a) in seen_ids for a in n.iterancestors()):
+                    continue
+                seen_ids.add(id(n))
+                selected.append(n)
+            wrapper = lxml_html.Element("div")
+            for n in selected:
                 wrapper.append(n)
             return wrapper
         return scope  # no matches: fall back to whole body, not auto-scope

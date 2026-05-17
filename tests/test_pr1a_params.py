@@ -179,6 +179,20 @@ def test_include_tags_skips_auto_main_scoping():
     assert "Main Heading" not in out.markdown
 
 
+def test_include_tags_no_double_pull_on_nested():
+    """Regression: when include_tags matches both an ancestor and its
+    descendant (e.g. ['article', 'h1'] on `<article><h1>X</h1><p>P</p></article>`),
+    `lxml.Element.append()` would reparent the descendant out of the moved
+    ancestor — producing duplicate or out-of-order content. The fix walks
+    matches in document order and drops any node whose ancestor was already
+    selected."""
+    html = "<html><body><article><h1>X</h1><p>P</p></article></body></html>"
+    out = content_mod.html_to_markdown(html, include_tags=["article", "h1"])
+    assert out.markdown.count("X") == 1
+    # Document order inside the kept article: h1 (X) precedes p (P)
+    assert out.markdown.index("X") < out.markdown.index("P")
+
+
 def test_include_tags_multiple_kept_in_document_order():
     out = content_mod.html_to_markdown(
         HTML_WITH_NAV_ASIDE_MAIN, include_tags=["article", "aside"]
@@ -210,6 +224,25 @@ def test_exclude_tags_combines_with_include_tags():
     assert "Main Heading" in out.markdown
     assert "Side Heading" in out.markdown
     assert "footer text" not in out.markdown
+
+
+# ---- input validation at the MCP boundary ----------------------------------
+
+
+def test_clean_tags_rejects_malformed():
+    """Regression: empty strings and CSS-selector-like inputs must be dropped
+    before they reach lxml's xpath builder, otherwise `XPathEvalError` escapes
+    the "errors are values, not exceptions" boundary contract."""
+    from refetch.cli import _clean_tags
+
+    assert _clean_tags(["article", "", "nav"]) == ["article", "nav"]
+    assert _clean_tags(["div[onclick]"]) == []          # CSS attr selector
+    assert _clean_tags(["nav, footer"]) == []            # comma-joined typo
+    assert _clean_tags(["MAIN"]) == ["main"]             # case-normalized
+    assert _clean_tags([" article "]) == ["article"]    # whitespace-stripped
+    assert _clean_tags([123, None, ""]) == []
+    assert _clean_tags("article") == []                  # not a list
+    assert _clean_tags(None) == []
 
 
 # ---- backwards-compat: default call response shape --------------------------

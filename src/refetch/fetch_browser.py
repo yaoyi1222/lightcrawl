@@ -119,6 +119,11 @@ async def fetch(
     async with pool.context(storage_state=storage_state) as ctx:
         await _STEALTH.apply_stealth_async(ctx)
         if headers:
+            # NOTE: `set_extra_http_headers` *replaces* the context's extra
+            # headers, it does not merge. Today stealth doesn't set extras
+            # via this API (it injects via JS + UA-via-context-options), so
+            # the caller's dict is safe. If stealth ever starts setting
+            # default Referer/Accept-Language here, swap to a manual merge.
             await ctx.set_extra_http_headers(headers)
         page = await ctx.new_page()
         try:
