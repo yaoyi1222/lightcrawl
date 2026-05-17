@@ -80,18 +80,39 @@ class BrowserPool:
             return self._browser
 
     @asynccontextmanager
-    async def context(self, *, storage_state: str | dict | None = None):
+    async def context(
+        self,
+        *,
+        storage_state: str | dict | None = None,
+        **context_kwargs,
+    ):
+        """Create a fresh `BrowserContext`. Extra kwargs are forwarded to
+        `browser.new_context()` so callers can unpack a Playwright device
+        descriptor (`pool._pw.devices['iPhone 13']`) for mobile emulation
+        without this method needing to know about every device knob (UA,
+        viewport, device_scale_factor, is_mobile, has_touch …)."""
         browser = await self._ensure()
         async with self._sem:
-            ctx = await browser.new_context(
-                storage_state=storage_state,
-                user_agent=_DEFAULT_UA,
-                viewport={"width": 1280, "height": 800},
-            )
+            kwargs = {
+                "user_agent": _DEFAULT_UA,
+                "viewport": {"width": 1280, "height": 800},
+            }
+            kwargs.update(context_kwargs)  # caller wins on collision
+            ctx = await browser.new_context(storage_state=storage_state, **kwargs)
             try:
                 yield ctx
             finally:
                 await ctx.close()
+
+    async def mobile_context_kwargs(self) -> dict:
+        """Return the iPhone 13 descriptor for unpacking into `context(...)`.
+
+        Implies `_ensure()` because Playwright's `devices` table lives on the
+        started Playwright instance, not on the import."""
+        await self._ensure()
+        # `dict(...)` to detach from Playwright's internal dict, so callers
+        # who mutate (e.g. extra kwargs) don't poison the device table.
+        return dict(self._pw.devices["iPhone 13"])
 
     async def close(self) -> None:
         async with self._lock:
@@ -111,12 +132,17 @@ async def fetch(
     timeout: float = DEFAULT_TIMEOUT,
     storage_state: str | dict | None = None,
     headers: dict[str, str] | None = None,
+    mobile: bool = False,
 ) -> BrowserResult:
     """L2 fetch via Playwright with stealth always enabled."""
     wait_for = wait_for or WaitFor()
     started = time.monotonic()
 
-    async with pool.context(storage_state=storage_state) as ctx:
+    extra_ctx_kwargs: dict = {}
+    if mobile:
+        extra_ctx_kwargs = await pool.mobile_context_kwargs()
+
+    async with pool.context(storage_state=storage_state, **extra_ctx_kwargs) as ctx:
         await _STEALTH.apply_stealth_async(ctx)
         if headers:
             # NOTE: `set_extra_http_headers` *replaces* the context's extra

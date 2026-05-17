@@ -161,10 +161,30 @@ def detect_spa_shell(html_text: str) -> bool:
     return False
 
 
+def _drop_base64_images(doc: lxml_html.HtmlElement) -> None:
+    """Remove `<img>` elements whose `src` is a `data:` URI.
+
+    Used by `html_to_markdown(remove_base64_images=True)` so non-base64
+    images survive into markdown while data-URI payloads (often hundreds
+    of KB each) are dropped. Two-pass collect-then-remove because
+    mutating during `doc.iter()` invalidates the iterator (see CLAUDE.md).
+    """
+    to_remove: list[lxml_html.HtmlElement] = []
+    for el in doc.iter("img"):
+        src = (el.get("src") or "").strip().lower()
+        if src.startswith("data:"):
+            to_remove.append(el)
+    for el in to_remove:
+        parent = el.getparent()
+        if parent is not None:
+            parent.remove(el)
+
+
 def _clean_dom(
     doc: lxml_html.HtmlElement,
     *,
     extra_strip: tuple[str, ...] | list[str] = (),
+    keep_images: bool = False,
 ) -> None:
     """Remove non-content elements from the DOM in place.
 
@@ -172,8 +192,14 @@ def _clean_dom(
     built-in `_REMOVE_TAGS` (script/style/iframe/...). Used by Firecrawl-style
     `exclude_tags` to let callers blacklist e.g. `<nav>`/`<aside>`/`<footer>`
     that we deliberately keep by default (see comment on `_REMOVE_TAGS`).
+
+    `keep_images=True` skips the built-in `<img>` strip so the caller can
+    selectively drop only base64-inlined ones via `_drop_base64_images()`.
+    `<picture>` and `<source>` stay stripped either way — neither carries
+    useful text and both clutter markdown.
     """
-    remove_tags = _REMOVE_TAGS + tuple(t.lower() for t in extra_strip)
+    base_remove = tuple(t for t in _REMOVE_TAGS if not (keep_images and t == "img"))
+    remove_tags = base_remove + tuple(t.lower() for t in extra_strip)
     remove_xpath = " | ".join(f"//{t}" for t in remove_tags)
     for el in doc.xpath(remove_xpath):
         parent = el.getparent()
@@ -416,6 +442,7 @@ def html_to_markdown(
     url: str | None = None,
     include_tags: tuple[str, ...] | list[str] = (),
     exclude_tags: tuple[str, ...] | list[str] = (),
+    remove_base64_images: bool = False,
 ) -> ExtractedContent:
     """Extract title + main content. If selector given, restrict to that subtree.
     If url given, look up domain-specific hints (selector + actionable
@@ -446,7 +473,12 @@ def html_to_markdown(
     suggestions, hint = _suggested_selectors(doc, url)
     title = (doc.findtext(".//title") or "").strip()
 
-    _clean_dom(doc, extra_strip=exclude_tags)
+    # When opting in to base64 stripping, drop the data-URI images first,
+    # THEN clean the DOM with images preserved — net effect: non-base64
+    # images survive into markdown, base64 payloads are gone.
+    if remove_base64_images:
+        _drop_base64_images(doc)
+    _clean_dom(doc, extra_strip=exclude_tags, keep_images=remove_base64_images)
 
     if not title:
         h1s = doc.xpath("//h1")
