@@ -159,6 +159,8 @@ async def _run_fetch(args: argparse.Namespace) -> int:
         headers=_parse_headers(getattr(args, "headers", None)),
         include_tags=_clean_tags(getattr(args, "include_tags", None)),
         exclude_tags=_clean_tags(getattr(args, "exclude_tags", None)),
+        mobile=bool(getattr(args, "mobile", False)),
+        remove_base64_images=bool(getattr(args, "remove_base64_images", False)),
     )
     router = Router()
     try:
@@ -316,6 +318,25 @@ def _add_fetch_parser(sub: argparse._SubParsersAction) -> None:
         help=(
             "Tag-level denylist, repeatable. Applied on top of the built-in "
             "script/style/iframe strip. Must match HTML5 element-name shape."
+        ),
+    )
+    p.add_argument(
+        "--mobile",
+        action="store_true",
+        help=(
+            "Emulate a mobile client on both layers. L1 switches curl_cffi to "
+            "the iOS Safari impersonate profile (UA + TLS fingerprint together); "
+            "L2 uses Playwright's 'iPhone 13' device descriptor."
+        ),
+    )
+    p.add_argument(
+        "--remove-base64-images",
+        dest="remove_base64_images",
+        action="store_true",
+        help=(
+            "Drop <img> elements whose src is a data: URI before extraction. "
+            "Non-base64 images then survive into markdown (default behavior "
+            "strips all <img>). v0.3 plans to make this the default."
         ),
     )
     p.set_defaults(func=_cmd_fetch)

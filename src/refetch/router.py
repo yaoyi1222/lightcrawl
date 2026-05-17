@@ -43,6 +43,15 @@ class FetchRequest:
     headers: dict[str, str] = field(default_factory=dict)
     include_tags: list[str] = field(default_factory=list)
     exclude_tags: list[str] = field(default_factory=list)
+    # v0.2 PR 1b — mobile emulation + base64 image stripping
+    # mobile=True switches both layers: L1 uses curl_cffi's iOS Safari
+    # impersonate profile (UA + TLS fingerprint together — flipping UA
+    # alone is itself a bot signal); L2 uses Playwright's "iPhone 13"
+    # device descriptor.
+    mobile: bool = False
+    # Default False preserves byte-identical v0.1 responses. v0.3 plans
+    # to flip the default to True with a README announcement.
+    remove_base64_images: bool = False
 
 
 def _now_iso() -> str:
@@ -121,6 +130,7 @@ async def _l1_with_one_retry(
     timeout_s: float,
     *,
     headers: dict[str, str] | None = None,
+    impersonate: str = fetch_http.DEFAULT_IMPERSONATE,
 ) -> fetch_http.HttpResult:
     """Run L1 once; on `asyncio.TimeoutError` only, try one short retry.
 
@@ -129,7 +139,7 @@ async def _l1_with_one_retry(
     can fall back to L2 the same way they did before this helper existed.
     """
     def _call(t: float) -> fetch_http.HttpResult:
-        return fetch_http.fetch(url, timeout=t, headers=headers)
+        return fetch_http.fetch(url, timeout=t, headers=headers, impersonate=impersonate)
 
     try:
         return await asyncio.wait_for(
@@ -243,7 +253,12 @@ class Router:
         # Auto: try L1, escalate to L2 on signals
         l1_timeout = min(8.0, req.timeout_ms / 1000.0)
         try:
-            r = await _l1_with_one_retry(req.url, l1_timeout, headers=req.headers or None)
+            r = await _l1_with_one_retry(
+                req.url,
+                l1_timeout,
+                headers=req.headers or None,
+                impersonate=fetch_http.MOBILE_IMPERSONATE if req.mobile else fetch_http.DEFAULT_IMPERSONATE,
+            )
         except asyncio.TimeoutError:
             attempts.append(Attempt("http", "timeout"))
             return await self._fetch_browser_only(req, attempts, storage_state=None)
@@ -262,6 +277,7 @@ class Router:
             url=req.url,
             include_tags=req.include_tags,
             exclude_tags=req.exclude_tags,
+            remove_base64_images=req.remove_base64_images,
         )
         if extracted.looks_like_login_wall and r.status_code in (200, 401):
             return _login_required(req.url, attempts)
@@ -278,7 +294,12 @@ class Router:
     async def _fetch_http_only(self, req: FetchRequest, attempts: list[Attempt]) -> dict:
         l1_timeout = min(8.0, req.timeout_ms / 1000.0)
         try:
-            r = await _l1_with_one_retry(req.url, l1_timeout, headers=req.headers or None)
+            r = await _l1_with_one_retry(
+                req.url,
+                l1_timeout,
+                headers=req.headers or None,
+                impersonate=fetch_http.MOBILE_IMPERSONATE if req.mobile else fetch_http.DEFAULT_IMPERSONATE,
+            )
         except asyncio.TimeoutError:
             attempts.append(Attempt("http", "timeout"))
             return _failure(req.url, ErrorCode.TIMEOUT, "L1 timed out", attempts)
@@ -292,6 +313,7 @@ class Router:
             url=req.url,
             include_tags=req.include_tags,
             exclude_tags=req.exclude_tags,
+            remove_base64_images=req.remove_base64_images,
         )
         return _success_from_http(req, r, extracted, attempts, "http")
 
@@ -317,6 +339,7 @@ class Router:
                     timeout=min(15.0, req.timeout_ms / 1000.0),
                     storage_state=storage_state,
                     headers=req.headers or None,
+                    mobile=req.mobile,
                 ),
                 timeout=req.timeout_ms / 1000.0,
             )
@@ -353,6 +376,7 @@ class Router:
             url=req.url,
             include_tags=req.include_tags,
             exclude_tags=req.exclude_tags,
+            remove_base64_images=req.remove_base64_images,
         )
         if extracted.looks_like_login_wall and storage_state is None:
             return _login_required(req.url, attempts)
