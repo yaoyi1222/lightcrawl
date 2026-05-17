@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import platform
 import time
 from contextlib import asynccontextmanager
@@ -15,6 +16,20 @@ from playwright.async_api import (
 from playwright_stealth import Stealth
 
 _STEALTH = Stealth()
+
+# Mobile-aware stealth. playwright-stealth's defaults inject DESKTOP values
+# (navigator.platform → "Win32", navigator.vendor → "Google Inc.", a
+# Chromium-shaped sec-ch-ua header). Layered on top of an iPhone UA those
+# create internal inconsistency — exactly the bot signal we're trying to
+# avoid by switching the impersonate / device. So for mobile=True we use a
+# separate Stealth instance pinning the JS-visible values to real iOS.
+_STEALTH_MOBILE = Stealth(
+    navigator_platform_override="iPhone",
+    navigator_vendor_override="Apple Computer, Inc.",
+    # iOS Safari doesn't ship Client Hints; rewriting them to look mobile is
+    # less defensible than just not sending them.
+    sec_ch_ua=False,
+)
 
 from .errors import ErrorCode, FetchError
 
@@ -108,11 +123,14 @@ class BrowserPool:
         """Return the iPhone 13 descriptor for unpacking into `context(...)`.
 
         Implies `_ensure()` because Playwright's `devices` table lives on the
-        started Playwright instance, not on the import."""
+        started Playwright instance, not on the import.
+
+        Returns a `deepcopy` — the descriptor has nested dicts (`viewport`),
+        so a shallow `dict(...)` would still share those nested references
+        and a caller mutating `result['viewport']['width']` would poison
+        Playwright's device table for every subsequent fetch."""
         await self._ensure()
-        # `dict(...)` to detach from Playwright's internal dict, so callers
-        # who mutate (e.g. extra kwargs) don't poison the device table.
-        return dict(self._pw.devices["iPhone 13"])
+        return copy.deepcopy(self._pw.devices["iPhone 13"])
 
     async def close(self) -> None:
         async with self._lock:
@@ -143,7 +161,8 @@ async def fetch(
         extra_ctx_kwargs = await pool.mobile_context_kwargs()
 
     async with pool.context(storage_state=storage_state, **extra_ctx_kwargs) as ctx:
-        await _STEALTH.apply_stealth_async(ctx)
+        stealth = _STEALTH_MOBILE if mobile else _STEALTH
+        await stealth.apply_stealth_async(ctx)
         if headers:
             # NOTE: `set_extra_http_headers` *replaces* the context's extra
             # headers, it does not merge. Today stealth doesn't set extras
