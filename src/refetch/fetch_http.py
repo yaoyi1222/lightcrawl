@@ -20,8 +20,21 @@ class HttpResult:
     elapsed_ms: int
 
 
-def fetch(url: str, *, timeout: float = DEFAULT_TIMEOUT, impersonate: str = "chrome120") -> HttpResult:
-    """L1 fetch using curl_cffi with browser TLS fingerprint impersonation."""
+def fetch(
+    url: str,
+    *,
+    timeout: float = DEFAULT_TIMEOUT,
+    impersonate: str = "chrome120",
+    headers: dict[str, str] | None = None,
+) -> HttpResult:
+    """L1 fetch using curl_cffi with browser TLS fingerprint impersonation.
+
+    `headers` are merged into the request after the impersonate profile sets
+    its defaults — caller-supplied values win on key collision. Pass at your
+    own risk: overriding `User-Agent` here desyncs UA from the TLS fingerprint
+    (a known bot signal). For `mobile`-style switches, prefer changing the
+    impersonate profile instead of the UA header (see 02.md PR 1b).
+    """
     try:
         r = ccr.get(
             url,
@@ -29,6 +42,7 @@ def fetch(url: str, *, timeout: float = DEFAULT_TIMEOUT, impersonate: str = "chr
             impersonate=impersonate,
             allow_redirects=True,
             max_recv_speed=0,
+            headers=headers or None,
         )
     except ccr.errors.RequestsError as e:
         msg = str(e)

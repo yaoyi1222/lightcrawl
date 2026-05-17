@@ -349,7 +349,7 @@ async def test_l1_retries_once_on_timeout_and_succeeds(router):
     `timeout` in attempts (retry was transparent at the strategy level)."""
     call_count = {"n": 0}
 
-    def fake_fetch(url: str, *, timeout: float):
+    def fake_fetch(url: str, *, timeout: float, **_kwargs):
         call_count["n"] += 1
         if call_count["n"] == 1:
             raise TimeoutError("simulated transient L1 timeout")
@@ -369,7 +369,7 @@ async def test_l1_retry_failure_falls_back_to_l2(router):
     """If both L1 attempts time out, escalate to browser as before."""
     call_count = {"n": 0, "browser": 0}
 
-    def always_timeout(url: str, *, timeout: float):
+    def always_timeout(url: str, *, timeout: float, **_kwargs):
         call_count["n"] += 1
         raise TimeoutError("L1 always slow")
 
@@ -406,7 +406,7 @@ async def test_spa_navigation_loop_propagates_error_code(router):
         )
 
     # First force L1 to fail/escalate so we end up in L2
-    def fake_l1(url, *, timeout):
+    def fake_l1(url, *, timeout, **_kwargs):
         raise TimeoutError("force escalate")
 
     with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
@@ -429,7 +429,7 @@ async def test_spa_navigation_loop_no_hint_for_unknown_domain(router):
     async def fake_browser_spa_loop(*args, **kwargs):
         raise FetchError(ErrorCode.SPA_NAVIGATION_LOOP, "spa loop")
 
-    def fake_l1(url, *, timeout):
+    def fake_l1(url, *, timeout, **_kwargs):
         raise TimeoutError("force escalate")
 
     with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \

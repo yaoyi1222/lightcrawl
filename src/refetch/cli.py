@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import re
 import sys
 
 from . import auth
@@ -14,6 +15,48 @@ from .search.service import (
     SearchRequest,
     SearchService,
 )
+
+
+# HTML5 element-name shape. Rejects malformed include_tag / exclude_tag inputs
+# (empty string, CSS selectors, "nav, footer" comma typos) before they reach
+# lxml's xpath builder — an invalid xpath there raises XPathEvalError, which
+# would breach the "errors are values, not exceptions" boundary contract.
+_TAG_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9-]*$")
+
+
+def _clean_tags(raw: list[str] | None) -> list[str]:
+    if not raw:
+        return []
+    out: list[str] = []
+    for t in raw:
+        if not isinstance(t, str):
+            continue
+        s = t.strip().lower()
+        if _TAG_RE.match(s):
+            out.append(s)
+    return out
+
+
+def _parse_headers(raw: list[str] | None) -> dict[str, str]:
+    """Parse `--header KEY=VAL` (or `KEY: VAL`) flags into a dict. Malformed
+    entries (no separator) are silently dropped — argparse already accepted
+    them as strings, but garbage stays out of the request."""
+    if not raw:
+        return {}
+    out: dict[str, str] = {}
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        if "=" in item:
+            k, v = item.split("=", 1)
+        elif ":" in item:
+            k, v = item.split(":", 1)
+        else:
+            continue
+        k = k.strip()
+        if k:
+            out[k] = v.strip()
+    return out
 
 
 def _print(obj) -> None:
@@ -111,6 +154,9 @@ async def _run_fetch(args: argparse.Namespace) -> int:
         wait_for=wait_for,
         max_inline_tokens=args.max_inline_tokens,
         timeout_ms=args.timeout_ms,
+        headers=_parse_headers(getattr(args, "headers", None)),
+        include_tags=_clean_tags(getattr(args, "include_tags", None)),
+        exclude_tags=_clean_tags(getattr(args, "exclude_tags", None)),
     )
     router = Router()
     try:
@@ -233,6 +279,42 @@ def _add_fetch_parser(sub: argparse._SubParsersAction) -> None:
     )
     p.add_argument(
         "--timeout-ms", dest="timeout_ms", type=int, default=30_000,
+    )
+    p.add_argument(
+        "--header",
+        dest="headers",
+        action="append",
+        default=[],
+        metavar="KEY=VAL",
+        help=(
+            "Extra HTTP request header, repeatable. Merged after the impersonate "
+            "profile (caller wins on collision). Avoid overriding User-Agent on "
+            "L1 — that desyncs UA from the TLS fingerprint."
+        ),
+    )
+    p.add_argument(
+        "--include-tag",
+        dest="include_tags",
+        action="append",
+        default=[],
+        metavar="TAG",
+        help=(
+            "Tag-level allowlist, repeatable. When non-empty, automatic "
+            "<main>/<article> scoping is skipped and the result is every match "
+            "in document order. No-match falls back to whole <body>. Must match "
+            "HTML5 element-name shape."
+        ),
+    )
+    p.add_argument(
+        "--exclude-tag",
+        dest="exclude_tags",
+        action="append",
+        default=[],
+        metavar="TAG",
+        help=(
+            "Tag-level denylist, repeatable. Applied on top of the built-in "
+            "script/style/iframe strip. Must match HTML5 element-name shape."
+        ),
     )
     p.set_defaults(func=_cmd_fetch)
 

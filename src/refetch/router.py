@@ -39,6 +39,10 @@ class FetchRequest:
     wait_for: WaitForArg | None = None
     max_inline_tokens: int = 8000
     timeout_ms: int = 30_000
+    # v0.2 PR 1a — HTTP/DOM layer params (L1+L2 compatible)
+    headers: dict[str, str] = field(default_factory=dict)
+    include_tags: list[str] = field(default_factory=list)
+    exclude_tags: list[str] = field(default_factory=list)
 
 
 def _now_iso() -> str:
@@ -112,22 +116,30 @@ def _binary_url_suggestions(url: str) -> list[str]:
 _L1_RETRY_TIMEOUT_S = 4.0
 
 
-async def _l1_with_one_retry(url: str, timeout_s: float) -> fetch_http.HttpResult:
+async def _l1_with_one_retry(
+    url: str,
+    timeout_s: float,
+    *,
+    headers: dict[str, str] | None = None,
+) -> fetch_http.HttpResult:
     """Run L1 once; on `asyncio.TimeoutError` only, try one short retry.
 
     `FetchError`s (SSL/DNS/etc.) are deterministic — no point retrying.
     Re-raises `asyncio.TimeoutError` if the retry also times out, so callers
     can fall back to L2 the same way they did before this helper existed.
     """
+    def _call(t: float) -> fetch_http.HttpResult:
+        return fetch_http.fetch(url, timeout=t, headers=headers)
+
     try:
         return await asyncio.wait_for(
-            asyncio.to_thread(fetch_http.fetch, url, timeout=timeout_s),
+            asyncio.to_thread(_call, timeout_s),
             timeout=timeout_s + 1.0,
         )
     except asyncio.TimeoutError:
         retry_to = min(_L1_RETRY_TIMEOUT_S, timeout_s)
         return await asyncio.wait_for(
-            asyncio.to_thread(fetch_http.fetch, url, timeout=retry_to),
+            asyncio.to_thread(_call, retry_to),
             timeout=retry_to + 1.0,
         )
 
@@ -231,7 +243,7 @@ class Router:
         # Auto: try L1, escalate to L2 on signals
         l1_timeout = min(8.0, req.timeout_ms / 1000.0)
         try:
-            r = await _l1_with_one_retry(req.url, l1_timeout)
+            r = await _l1_with_one_retry(req.url, l1_timeout, headers=req.headers or None)
         except asyncio.TimeoutError:
             attempts.append(Attempt("http", "timeout"))
             return await self._fetch_browser_only(req, attempts, storage_state=None)
@@ -244,7 +256,13 @@ class Router:
         attempts.append(Attempt("http", str(r.status_code)))
 
         # Login wall detected without profile → stop, don't escalate
-        extracted = content_mod.html_to_markdown(r.text, selector=req.selector, url=req.url)
+        extracted = content_mod.html_to_markdown(
+            r.text,
+            selector=req.selector,
+            url=req.url,
+            include_tags=req.include_tags,
+            exclude_tags=req.exclude_tags,
+        )
         if extracted.looks_like_login_wall and r.status_code in (200, 401):
             return _login_required(req.url, attempts)
 
@@ -260,7 +278,7 @@ class Router:
     async def _fetch_http_only(self, req: FetchRequest, attempts: list[Attempt]) -> dict:
         l1_timeout = min(8.0, req.timeout_ms / 1000.0)
         try:
-            r = await _l1_with_one_retry(req.url, l1_timeout)
+            r = await _l1_with_one_retry(req.url, l1_timeout, headers=req.headers or None)
         except asyncio.TimeoutError:
             attempts.append(Attempt("http", "timeout"))
             return _failure(req.url, ErrorCode.TIMEOUT, "L1 timed out", attempts)
@@ -268,7 +286,13 @@ class Router:
             attempts.append(Attempt("http", e.code.value.lower()))
             return _failure(req.url, e.code, e.detail, attempts)
         attempts.append(Attempt("http", str(r.status_code)))
-        extracted = content_mod.html_to_markdown(r.text, selector=req.selector, url=req.url)
+        extracted = content_mod.html_to_markdown(
+            r.text,
+            selector=req.selector,
+            url=req.url,
+            include_tags=req.include_tags,
+            exclude_tags=req.exclude_tags,
+        )
         return _success_from_http(req, r, extracted, attempts, "http")
 
     async def _fetch_browser_only(
@@ -292,6 +316,7 @@ class Router:
                     wait_for=wf,
                     timeout=min(15.0, req.timeout_ms / 1000.0),
                     storage_state=storage_state,
+                    headers=req.headers or None,
                 ),
                 timeout=req.timeout_ms / 1000.0,
             )
@@ -322,7 +347,13 @@ class Router:
                 status_code=r.status_code,
             )
 
-        extracted = content_mod.html_to_markdown(r.text, selector=req.selector, url=req.url)
+        extracted = content_mod.html_to_markdown(
+            r.text,
+            selector=req.selector,
+            url=req.url,
+            include_tags=req.include_tags,
+            exclude_tags=req.exclude_tags,
+        )
         if extracted.looks_like_login_wall and storage_state is None:
             return _login_required(req.url, attempts)
 
