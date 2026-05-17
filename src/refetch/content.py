@@ -195,10 +195,17 @@ def _clean_dom(
 
     `keep_images=True` skips the built-in `<img>` strip so the caller can
     selectively drop only base64-inlined ones via `_drop_base64_images()`.
-    `<picture>` and `<source>` stay stripped either way — neither carries
-    useful text and both clutter markdown.
+    `<picture>` and `<source>` are **also** spared in this mode — they're
+    the standard wrappers for responsive images. `<source>` is a void
+    element per HTML5 spec, but lxml's HTML parser treats it as non-void
+    and nests the sibling `<img>` *inside* it during parsing — so removing
+    `<source>` would cascade-kill the `<img>` next to it in the source HTML.
+    Keeping `<source>` in the tree is safe: markdownify emits nothing for
+    it (no text content, no recognized markdown). `<svg>` and other media
+    wrappers stay stripped either way.
     """
-    base_remove = tuple(t for t in _REMOVE_TAGS if not (keep_images and t == "img"))
+    _IMG_TAGS = {"img", "picture", "source"}
+    base_remove = tuple(t for t in _REMOVE_TAGS if not (keep_images and t in _IMG_TAGS))
     remove_tags = base_remove + tuple(t.lower() for t in extra_strip)
     remove_xpath = " | ".join(f"//{t}" for t in remove_tags)
     for el in doc.xpath(remove_xpath):

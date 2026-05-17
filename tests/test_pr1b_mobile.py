@@ -16,7 +16,7 @@ issue #17 — these tests only assert the wiring.
 """
 
 from contextlib import asynccontextmanager
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -103,62 +103,187 @@ async def test_default_mobile_false_uses_desktop_impersonate(router):
 # ---- L2: mobile unpacks the iPhone 13 device descriptor --------------------
 
 
-async def test_mobile_unpacks_iphone_device_into_browser_context(router):
-    """When L1 fails / forces escalation, `mobile=True` must reach L2 and
-    the BrowserPool must apply the iPhone 13 device descriptor (UA +
-    viewport + is_mobile + has_touch) by unpacking the dict from
-    `pool.mobile_context_kwargs()`."""
-    # Force L1 to return 403 → router escalates to L2
-    def fake_l1(url, *, timeout, headers=None, impersonate=None, **_kwargs):
-        return HttpResult(
-            final_url=url, status_code=403, text="<html></html>",
-            content_type="text/html", elapsed_ms=5,
-        )
+async def test_mobile_unpacks_iphone_device_into_browser_context():
+    """Lock the wiring inside the **real** `fetch_browser.fetch` body:
+    `mobile=True` must call `pool.mobile_context_kwargs()` and unpack the
+    result into `pool.context(...)`. Patching `fetch_browser.fetch` itself
+    would be a tautology — the fake would just reimplement the very logic
+    under test (reviewer #1 in PR #28). Instead we patch one layer deeper:
+    the pool's `context()` and `mobile_context_kwargs()` methods, plus
+    stealth + page primitives, then call the real `fetch()`."""
+    seen_kwargs: dict = {}
 
-    seen_kwargs = {}
+    fake_iphone_descriptor = {
+        "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) Safari/604.1",
+        "viewport": {"width": 390, "height": 844},
+        "is_mobile": True,
+        "has_touch": True,
+        "device_scale_factor": 3,
+    }
 
     async def fake_mobile_kwargs(self):
-        return {
-            "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS …)",
+        # Return the descriptor so a deepcopy or shallow copy in the helper
+        # has no visible effect on this test — we only assert the contract,
+        # not the implementation. The deepcopy guard is verified separately.
+        return dict(fake_iphone_descriptor)
+
+    fake_response = MagicMock()
+    fake_response.status = 200
+    fake_response.headers = {"content-type": "text/html"}
+    fake_page = AsyncMock()
+    fake_page.goto = AsyncMock(return_value=fake_response)
+    fake_page.content = AsyncMock(return_value=_LONG_HTML)
+    fake_page.close = AsyncMock()
+    fake_page.url = "https://example.com/"
+    fake_page.wait_for_selector = AsyncMock()
+    fake_page.wait_for_load_state = AsyncMock()
+
+    fake_ctx = AsyncMock()
+    fake_ctx.new_page = AsyncMock(return_value=fake_page)
+
+    @asynccontextmanager
+    async def fake_context(self, *, storage_state=None, **context_kwargs):
+        seen_kwargs.update(context_kwargs)
+        yield fake_ctx
+
+    pool = fb_mod.BrowserPool()
+
+    with patch.object(fb_mod.BrowserPool, "mobile_context_kwargs", fake_mobile_kwargs), \
+         patch.object(fb_mod.BrowserPool, "context", fake_context), \
+         patch.object(fb_mod._STEALTH_MOBILE, "apply_stealth_async", AsyncMock()), \
+         patch.object(fb_mod._STEALTH, "apply_stealth_async", AsyncMock()):
+        result = await fb_mod.fetch(pool, "https://example.com/", mobile=True)
+
+    # The contract under test: real fetch() unpacked the device descriptor
+    assert seen_kwargs.get("is_mobile") is True
+    assert seen_kwargs.get("has_touch") is True
+    assert "iPhone" in seen_kwargs.get("user_agent", "")
+    assert seen_kwargs.get("viewport", {}).get("width") == 390
+    # Returned result is sane
+    assert result.status_code == 200
+
+
+async def test_mobile_false_does_not_unpack_iphone_kwargs():
+    """Mirror of the test above for the negative case: with mobile=False,
+    `mobile_context_kwargs()` must NOT be called (the pool keeps its
+    desktop defaults). If a future refactor swaps the conditional, this
+    test catches it without us shipping a silent desktop→mobile regression."""
+    mobile_kwargs_called = {"count": 0}
+
+    async def fake_mobile_kwargs(self):
+        mobile_kwargs_called["count"] += 1
+        return {}
+
+    fake_response = MagicMock(status=200, headers={"content-type": "text/html"})
+    fake_page = AsyncMock()
+    fake_page.goto = AsyncMock(return_value=fake_response)
+    fake_page.content = AsyncMock(return_value=_LONG_HTML)
+    fake_page.close = AsyncMock()
+    fake_page.url = "https://example.com/"
+    fake_ctx = AsyncMock()
+    fake_ctx.new_page = AsyncMock(return_value=fake_page)
+
+    @asynccontextmanager
+    async def fake_context(self, *, storage_state=None, **context_kwargs):
+        yield fake_ctx
+
+    pool = fb_mod.BrowserPool()
+
+    with patch.object(fb_mod.BrowserPool, "mobile_context_kwargs", fake_mobile_kwargs), \
+         patch.object(fb_mod.BrowserPool, "context", fake_context), \
+         patch.object(fb_mod._STEALTH, "apply_stealth_async", AsyncMock()):
+        await fb_mod.fetch(pool, "https://example.com/", mobile=False)
+
+    assert mobile_kwargs_called["count"] == 0
+
+
+async def test_mobile_selects_mobile_stealth_instance():
+    """Reviewer #3: when mobile=True the iOS-aware `_STEALTH_MOBILE` must
+    be used instead of the desktop `_STEALTH`, otherwise stealth's default
+    `navigator.platform="Win32"` + `navigator.vendor="Google Inc."` ride
+    on top of an iPhone UA and create exactly the cross-layer
+    inconsistency we're trying to avoid."""
+    fake_response = MagicMock(status=200, headers={"content-type": "text/html"})
+    fake_page = AsyncMock()
+    fake_page.goto = AsyncMock(return_value=fake_response)
+    fake_page.content = AsyncMock(return_value=_LONG_HTML)
+    fake_page.close = AsyncMock()
+    fake_page.url = "https://example.com/"
+    fake_ctx = AsyncMock()
+    fake_ctx.new_page = AsyncMock(return_value=fake_page)
+
+    @asynccontextmanager
+    async def fake_context(self, *, storage_state=None, **context_kwargs):
+        yield fake_ctx
+
+    async def fake_mobile_kwargs(self):
+        return {"user_agent": "iPhone", "viewport": {"width": 390, "height": 844},
+                "is_mobile": True, "has_touch": True, "device_scale_factor": 3}
+
+    desktop_stealth_calls = []
+    mobile_stealth_calls = []
+
+    async def desktop_apply(ctx):
+        desktop_stealth_calls.append(ctx)
+
+    async def mobile_apply(ctx):
+        mobile_stealth_calls.append(ctx)
+
+    pool = fb_mod.BrowserPool()
+    with patch.object(fb_mod.BrowserPool, "context", fake_context), \
+         patch.object(fb_mod.BrowserPool, "mobile_context_kwargs", fake_mobile_kwargs), \
+         patch.object(fb_mod._STEALTH, "apply_stealth_async", desktop_apply), \
+         patch.object(fb_mod._STEALTH_MOBILE, "apply_stealth_async", mobile_apply):
+        await fb_mod.fetch(pool, "https://example.com/", mobile=True)
+        await fb_mod.fetch(pool, "https://example.com/", mobile=False)
+
+    assert len(mobile_stealth_calls) == 1, "mobile=True should use _STEALTH_MOBILE"
+    assert len(desktop_stealth_calls) == 1, "mobile=False should use _STEALTH"
+
+
+def test_stealth_mobile_overrides_are_ios_consistent():
+    """Lock the iOS-correctness of `_STEALTH_MOBILE` so a future stealth
+    upgrade can't silently revert these to desktop defaults."""
+    assert fb_mod._STEALTH_MOBILE.navigator_platform_override == "iPhone"
+    assert fb_mod._STEALTH_MOBILE.navigator_vendor_override == "Apple Computer, Inc."
+    # iOS Safari doesn't ship Client Hints
+    assert fb_mod._STEALTH_MOBILE.sec_ch_ua is False
+
+
+async def test_mobile_context_kwargs_returns_deep_copy():
+    """Reviewer N1: the dict returned by `mobile_context_kwargs()` must
+    not share mutable nested structures (e.g. `viewport`) with
+    Playwright's `devices` table — otherwise a caller mutating
+    `kwargs['viewport']['width']` poisons every subsequent fetch."""
+    pool = fb_mod.BrowserPool()
+
+    # Stub a minimal Playwright instance whose `devices` table mimics the
+    # real one's shape (the iPhone descriptor has a nested viewport dict).
+    fake_pw = MagicMock()
+    fake_pw.devices = {
+        "iPhone 13": {
+            "user_agent": "iPhone",
             "viewport": {"width": 390, "height": 844},
             "is_mobile": True,
             "has_touch": True,
             "device_scale_factor": 3,
         }
+    }
+    pool._pw = fake_pw
 
-    @asynccontextmanager
-    async def fake_context(self, *, storage_state=None, **context_kwargs):
-        seen_kwargs.update(context_kwargs)
-        # Yield a sentinel; fetch() won't actually do anything with it
-        # because we mock the whole fetch_browser.fetch call below.
-        yield None
+    async def noop_ensure():
+        return None
 
-    async def fake_l2(pool, url, *, wait_for=None, timeout=10.0,
-                     storage_state=None, headers=None, mobile=False, **_kwargs):
-        # Invoke the real pool plumbing through our patched methods so we
-        # can capture what context() received.
-        if mobile:
-            extra = await pool.mobile_context_kwargs()
-        else:
-            extra = {}
-        async with pool.context(storage_state=storage_state, **extra):
-            pass
-        return fb_mod.BrowserResult(
-            final_url=url, status_code=200, text=_LONG_HTML,
-            content_type="text/html", elapsed_ms=10,
-        )
+    with patch.object(pool, "_ensure", noop_ensure):
+        result = await pool.mobile_context_kwargs()
 
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_http.fetch", side_effect=fake_l1), \
-         patch("refetch.fetch_browser.BrowserPool.mobile_context_kwargs", fake_mobile_kwargs), \
-         patch("refetch.fetch_browser.BrowserPool.context", fake_context), \
-         patch("refetch.fetch_browser.fetch", side_effect=fake_l2):
-        await router.fetch(FetchRequest(url="https://example.com/", mobile=True))
+    # Mutate the returned nested dict aggressively
+    result["viewport"]["width"] = 9999
+    result["is_mobile"] = "tampered"
 
-    assert seen_kwargs.get("is_mobile") is True
-    assert seen_kwargs.get("has_touch") is True
-    assert "iPhone" in seen_kwargs.get("user_agent", "")
-    assert seen_kwargs.get("viewport", {}).get("width") == 390
+    # Source table must be unaffected
+    assert fake_pw.devices["iPhone 13"]["viewport"]["width"] == 390
+    assert fake_pw.devices["iPhone 13"]["is_mobile"] is True
 
 
 # ---- base64 image stripping ------------------------------------------------
@@ -196,6 +321,57 @@ def test_default_strips_all_images_v01_behavior():
     assert "data:image" not in out.markdown
     assert "example.com/logo.png" not in out.markdown
     assert "Pictures" in out.markdown
+
+
+def test_keep_images_preserves_picture_source_wrapper_so_img_survives():
+    """Reviewer #2: when `remove_base64_images=True`, an `<img>` wrapped
+    in `<picture><source>...</picture>` (the common responsive-image
+    pattern) must survive into the markdown. lxml's HTML parser treats
+    `<source>` as non-void and nests the next-sibling `<img>` *inside*
+    it during parsing, so any code that removes `<source>` would
+    cascade-kill the `<img>` next to it in source order. `<svg>` stays
+    stripped either way."""
+    html = (
+        "<html><body>"
+        "<picture>"
+        '<source srcset="https://e.com/x.webp" type="image/webp">'
+        '<img src="https://e.com/x.png" alt="x">'
+        "</picture>"
+        '<svg><path d="M0,0"/></svg>'
+        "<p>body text long enough to bypass the tiny-body escalation "
+        "heuristic and produce stable markdown.</p>"
+        "</body></html>"
+    )
+    out = content_mod.html_to_markdown(html, remove_base64_images=True)
+
+    # The <img> nested under <source> (lxml's parser quirk) survives
+    assert "e.com/x.png" in out.markdown
+    # <svg> always stripped (also in _REMOVE_TAGS, never useful as text)
+    assert "M0,0" not in out.markdown
+    # Body text intact
+    assert "body text" in out.markdown
+
+
+def test_default_behavior_strips_picture_source_img_together():
+    """Mirror: default (`remove_base64_images=False`) still strips every
+    media element — `<picture>`, `<source>`, `<img>`, `<svg>` all gone.
+    Locks v0.1 compat."""
+    html = (
+        "<html><body>"
+        "<picture>"
+        '<source srcset="https://e.com/x.webp">'
+        '<img src="https://e.com/x.png" alt="x">'
+        "</picture>"
+        '<svg><path d="M0,0"/></svg>'
+        "<p>body text long enough to bypass the tiny-body escalation "
+        "heuristic and produce stable markdown.</p>"
+        "</body></html>"
+    )
+    out = content_mod.html_to_markdown(html)  # default: remove_base64_images=False
+    assert "e.com/x.png" not in out.markdown
+    assert "x.webp" not in out.markdown
+    assert "M0,0" not in out.markdown
+    assert "body text" in out.markdown
 
 
 def test_drop_base64_images_helper_two_pass():
