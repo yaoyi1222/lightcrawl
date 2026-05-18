@@ -77,6 +77,10 @@ class BrowserResult:
     # where to write — keeps fetch_browser.fetch agnostic to filesystem
     # layout / paths.SCREENSHOTS and the {sha1(url)}.png naming convention.
     screenshot_png: bytes | None = None
+    # PR 5: intermediate screenshots from ScreenshotAction entries. Each
+    # dict: {index, label, png_bytes}. The router writes them to disk and
+    # appends to screenshots[].
+    action_screenshots: list[dict] | None = None
 
 
 class BrowserPool:
@@ -157,16 +161,25 @@ async def fetch(
     headers: dict[str, str] | None = None,
     mobile: bool = False,
     screenshot: bool = False,
+    actions: list | None = None,
 ) -> BrowserResult:
-    """L2 fetch via Playwright with stealth always enabled."""
+    """L2 fetch via Playwright with stealth always enabled.
+
+    `actions` (PR 5) is an optional list of action dataclass instances from
+    `lightcrawl.actions`. They execute after `wait_for` and before
+    `page.content()`. ScreenshotAction entries produce intermediate PNGs
+    returned via `BrowserResult.action_screenshots`."""
     wait_for = wait_for or WaitFor()
     started = time.monotonic()
+    if actions is None:
+        actions = []
 
     extra_ctx_kwargs: dict = {}
     if mobile:
         extra_ctx_kwargs = await pool.mobile_context_kwargs()
 
     png_bytes: bytes | None = None  # populated below if screenshot=True
+    action_shots: list[dict] = []   # intermediate screenshots (PR 5)
 
     async with pool.context(storage_state=storage_state, **extra_ctx_kwargs) as ctx:
         stealth = _STEALTH_MOBILE if mobile else _STEALTH
@@ -202,6 +215,50 @@ async def fetch(
                     )
                 except PWTimeout:
                     pass  # best-effort; SPAs often never go idle
+
+            # PR 5: execute declarative actions in order. Each ScreenshotAction
+            # appends to `action_shots`; the router saves them to disk later.
+            for i, action in enumerate(actions):
+                try:
+                    from lightcrawl.actions import (
+                        ClickAction,
+                        PressAction,
+                        ScrollAction,
+                        ScreenshotAction,
+                        WaitAction,
+                        WriteAction,
+                    )
+                    if isinstance(action, ClickAction):
+                        await page.click(action.selector, timeout=action.timeout_ms)
+                    elif isinstance(action, WriteAction):
+                        await page.fill(action.selector, action.text)
+                    elif isinstance(action, PressAction):
+                        await page.keyboard.press(action.key)
+                    elif isinstance(action, WaitAction):
+                        await asyncio.sleep(action.milliseconds / 1000.0)
+                    elif isinstance(action, ScrollAction):
+                        sign = 1 if action.direction == "down" else -1
+                        await page.evaluate(
+                            f"window.scrollBy(0, {sign * action.pixels})"
+                        )
+                    elif isinstance(action, ScreenshotAction):
+                        if len(action_shots) >= 20:
+                            raise FetchError(
+                                ErrorCode.ACTION_FAILED,
+                                f"action[{i}] ScreenshotAction: max 20 "
+                                "intermediate screenshots",
+                            )
+                        png = await page.screenshot(full_page=True, type="png")
+                        action_shots.append({
+                            "index": i,
+                            "label": action.label,
+                            "png_bytes": png,
+                        })
+                except PWTimeout as e:
+                    raise FetchError(
+                        ErrorCode.ACTION_FAILED,
+                        f"action[{i}] type={type(action).__name__}: {e}",
+                    ) from e
 
             # Bug 8: page.content() raises if the SPA is mid-navigation.
             # One short re-settle attempt rescues most cases; if it still
@@ -277,4 +334,5 @@ async def fetch(
         content_type=ctype,
         elapsed_ms=int((time.monotonic() - started) * 1000),
         screenshot_png=png_bytes,
+        action_screenshots=action_shots or None,
     )
