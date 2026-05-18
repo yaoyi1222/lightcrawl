@@ -229,10 +229,14 @@ async def fetch(
                 except Exception:
                     ctype = ""
 
-            # PR 2: capture the PNG inside the page lifetime so the
-            # screenshot reflects the same DOM state we just serialised.
-            # full_page=True so the whole scrollable area shows up; PNG
-            # over JPEG for lossless text rendering. The bytes go on the
+            # PR 2: capture the PNG immediately after extracting HTML so the
+            # screenshot corresponds to the DOM state as closely as Playwright
+            # allows. A small temporal gap remains — `page.content()` and
+            # `page.screenshot()` are distinct round-trips, so on animated /
+            # lazy-load pages they may differ by a few frames. Playwright has
+            # no atomic DOM-plus-pixels snapshot API.
+            # full_page=True so the whole scrollable area shows up; PNG over
+            # JPEG for lossless text rendering. The bytes go on the
             # BrowserResult — the router decides where to write them.
             if screenshot:
                 try:

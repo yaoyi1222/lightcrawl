@@ -100,10 +100,12 @@ def test_format_body_markdown_plus_screenshot_returns_markdown():
 
 
 def test_write_screenshot_lands_at_sha1_path(tmp_path, monkeypatch):
+    # `_write_screenshot` does `from .paths import SCREENSHOTS` lazily on
+    # each call, so patching `refetch.paths.SCREENSHOTS` is sufficient and
+    # correct. If a future refactor hoists the import to module scope,
+    # ADD a `refetch.router.SCREENSHOTS` patch alongside — don't leave a
+    # `raising=False` no-op here pretending to cover both modes.
     monkeypatch.setattr("refetch.paths.SCREENSHOTS", tmp_path / "screenshots")
-    monkeypatch.setattr("refetch.router.SCREENSHOTS", tmp_path / "screenshots", raising=False)
-    # router._write_screenshot imports SCREENSHOTS at call time via
-    # `from .paths import SCREENSHOTS`, so the paths patch wins.
 
     png = b"\x89PNG\r\n\x1a\n" + b"X" * 16
     path = _write_screenshot("https://example.com/foo", png)
