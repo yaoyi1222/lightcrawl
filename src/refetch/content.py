@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass, field
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from lxml import html as lxml_html
 from markdownify import markdownify
@@ -125,6 +125,11 @@ class ExtractedContent:
     looks_like_login_wall: bool = False
     headings: list[Heading] = field(default_factory=list)
     selector_hint: str | None = None
+    # PR 3: always-on extraction. Cheap since the DOM is already parsed —
+    # surfacing both lets a caller skip a second fetch when they want
+    # markdown + a link inventory or markdown + image URLs.
+    links: list[dict] = field(default_factory=list)
+    images: list[dict] = field(default_factory=list)
 
 
 def visible_text_ratio(html_text: str) -> float:
@@ -442,6 +447,99 @@ def _select_target(
     return body if body is not None else doc
 
 
+_SKIP_LINK_SCHEMES = ("mailto:", "javascript:", "tel:", "sms:", "data:")
+
+
+def _extract_links(doc: lxml_html.HtmlElement, base_url: str | None) -> list[dict]:
+    """Return every meaningful `<a href>` on the page in document order.
+
+    Each entry: `{url, text, rel}` where:
+      - `url` is absolute-resolved against `base_url` via `urljoin`. If
+        `base_url` is None or has no scheme/host, hrefs that were already
+        relative are emitted as-is (callers without context get what they
+        gave us).
+      - `text` is the trimmed anchor text (max one line, whitespace
+        collapsed). Empty string for image-only / icon-only anchors.
+      - `rel` is "internal" if the link's host matches `base_url`'s host,
+        "external" otherwise. With no `base_url`, defaults to "external".
+
+    Skipped: empty/missing href, `mailto:` / `javascript:` / `tel:` /
+    `sms:` / `data:` schemes (none of these are page navigations a caller
+    would want in a link inventory) and in-page anchors (`#...`).
+
+    Must be called BEFORE `_clean_dom` if the caller wants links — but
+    `<a>` is not in `_REMOVE_TAGS`, so it survives clean either way.
+    Image-only / nav anchors stay in the inventory: PR 3 is about giving
+    the caller a complete-as-possible link list, not about filtering for
+    quality (callers can dedup / filter downstream).
+    """
+    out: list[dict] = []
+    base_host = ""
+    if base_url:
+        try:
+            base_host = urlparse(base_url).hostname or ""
+        except ValueError:
+            base_host = ""
+    for el in doc.iter("a"):
+        raw_href = (el.get("href") or "").strip()
+        if not raw_href:
+            continue
+        lo = raw_href.lower()
+        if any(lo.startswith(s) for s in _SKIP_LINK_SCHEMES):
+            continue
+        if raw_href.startswith("#"):
+            continue
+        resolved = urljoin(base_url, raw_href) if base_url else raw_href
+        text = re.sub(r"\s+", " ", (el.text_content() or "").strip())
+        rel = "external"
+        if base_host:
+            try:
+                host = urlparse(resolved).hostname or ""
+            except ValueError:
+                host = ""
+            if host == base_host:
+                rel = "internal"
+        out.append({"url": resolved, "text": text, "rel": rel})
+    return out
+
+
+def _extract_images(doc: lxml_html.HtmlElement, base_url: str | None) -> list[dict]:
+    """Return every `<img>` on the page in document order.
+
+    Each entry: `{url, alt}` plus optional `width` and `height` ints when
+    the HTML attributes are present and integer-parsable. `data:` URI
+    images are deliberately skipped — they're typically tracking pixels,
+    inline icons, or rendered SVGs already represented elsewhere; surfacing
+    them bloats the response with payloads the caller can't fetch anyway.
+
+    Must be called BEFORE `_clean_dom` strips `<img>`. With
+    `remove_base64_images=True`, the order in `html_to_markdown` is
+    extract → drop base64 → clean — so this function still sees the full
+    `<img>` set before any stripping.
+    """
+    out: list[dict] = []
+    for el in doc.iter("img"):
+        raw_src = (el.get("src") or "").strip()
+        if not raw_src:
+            continue
+        if raw_src.lower().startswith("data:"):
+            continue
+        resolved = urljoin(base_url, raw_src) if base_url else raw_src
+        entry: dict = {"url": resolved, "alt": (el.get("alt") or "").strip()}
+        for attr in ("width", "height"):
+            raw = el.get(attr)
+            if raw is None:
+                continue
+            try:
+                entry[attr] = int(raw)
+            except (TypeError, ValueError):
+                # HTML allows "50%" / "auto" — drop the attribute if it
+                # isn't an integer rather than emitting a malformed value.
+                pass
+        out.append(entry)
+    return out
+
+
 def html_to_markdown(
     html_text: str,
     *,
@@ -480,6 +578,13 @@ def html_to_markdown(
     suggestions, hint = _suggested_selectors(doc, url)
     title = (doc.findtext(".//title") or "").strip()
 
+    # PR 3: extract links and images BEFORE _clean_dom strips <img> tags.
+    # _extract_images skips data: URIs, so the order relative to
+    # _drop_base64_images doesn't matter; the key constraint is "before
+    # _clean_dom when keep_images=False (the default)."
+    links = _extract_links(doc, url)
+    images = _extract_images(doc, url)
+
     # When opting in to base64 stripping, drop the data-URI images first,
     # THEN clean the DOM with images preserved — net effect: non-base64
     # images survive into markdown, base64 payloads are gone.
@@ -509,6 +614,8 @@ def html_to_markdown(
         looks_like_login_wall=looks_login,
         headings=headings,
         selector_hint=hint,
+        links=links,
+        images=images,
     )
 
 

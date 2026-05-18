@@ -5,6 +5,8 @@ from refetch.content import (
     _clean_dom,
     _dom_headings,
     _dom_to_plain_text,
+    _extract_images,
+    _extract_links,
     _locate_headings_in_markdown,
     _select_target,
     _suggested_selectors,
@@ -619,3 +621,219 @@ def test_html_to_markdown_headings_with_inline_code_have_line_numbers():
     assert headings[(2, "Using fetch() in Python")].line is not None
     assert headings[(3, "Important: do not delete")].line is not None
     assert headings[(4, "Some emphasized text")].line is not None
+
+
+# ---- PR 3: _extract_links -------------------------------------------------
+
+
+def test_extract_links_basic():
+    doc = lxml_html.fromstring("""
+        <html><body>
+          <a href="https://example.com/page1">Page 1</a>
+          <a href="/page2">Page 2</a>
+        </body></html>
+    """)
+    links = _extract_links(doc, "https://example.com/")
+    assert len(links) == 2
+    assert links[0]["url"] == "https://example.com/page1"
+    assert links[0]["text"] == "Page 1"
+    assert links[0]["rel"] == "internal"
+    assert links[1]["url"] == "https://example.com/page2"
+    assert links[1]["text"] == "Page 2"
+
+
+def test_extract_links_skips_empty_href():
+    doc = lxml_html.fromstring(
+        '<html><body><a href="">empty</a><a>no href</a>'
+        '<a href="https://example.com/">real</a></body></html>'
+    )
+    links = _extract_links(doc, "https://example.com/")
+    assert len(links) == 1
+    assert links[0]["url"] == "https://example.com/"
+
+
+def test_extract_links_skips_special_schemes():
+    doc = lxml_html.fromstring("""
+        <html><body>
+          <a href="mailto:alice@example.com">email</a>
+          <a href="javascript:void(0)">js</a>
+          <a href="tel:+15555551234">call</a>
+          <a href="sms:+15555551234">text</a>
+          <a href="data:text/plain,hello">data</a>
+          <a href="https://example.com/">real</a>
+        </body></html>
+    """)
+    links = _extract_links(doc, "https://example.com/")
+    assert len(links) == 1
+    assert links[0]["url"] == "https://example.com/"
+
+
+def test_extract_links_skips_in_page_anchors():
+    doc = lxml_html.fromstring("""
+        <html><body>
+          <a href="#section">jump</a>
+          <a href="#top">top</a>
+          <a href="https://example.com/about">about</a>
+        </body></html>
+    """)
+    links = _extract_links(doc, "https://example.com/")
+    assert len(links) == 1
+    assert links[0]["url"] == "https://example.com/about"
+
+
+def test_extract_links_resolves_relative_urls():
+    doc = lxml_html.fromstring(
+        '<html><body><a href="docs/api">API Docs</a></body></html>'
+    )
+    links = _extract_links(doc, "https://example.com/products/")
+    assert links[0]["url"] == "https://example.com/products/docs/api"
+
+
+def test_extract_links_internal_vs_external():
+    doc = lxml_html.fromstring("""
+        <html><body>
+          <a href="/about">internal</a>
+          <a href="https://other.com/page">external</a>
+          <a href="https://example.com/blog">also internal</a>
+        </body></html>
+    """)
+    links = _extract_links(doc, "https://example.com/")
+    assert links[0]["rel"] == "internal"
+    assert links[1]["rel"] == "external"
+    assert links[2]["rel"] == "internal"
+
+
+def test_extract_links_no_base_url_defaults_external():
+    doc = lxml_html.fromstring(
+        '<html><body><a href="https://example.com/">link</a></body></html>'
+    )
+    links = _extract_links(doc, None)
+    assert len(links) == 1
+    assert links[0]["rel"] == "external"
+    assert links[0]["url"] == "https://example.com/"
+
+
+def test_extract_links_collapses_whitespace_in_text():
+    doc = lxml_html.fromstring(
+        '<html><body><a href="/p">  multi   \n  line  </a></body></html>'
+    )
+    links = _extract_links(doc, "https://example.com/")
+    assert links[0]["text"] == "multi line"
+
+
+def test_extract_links_image_only_anchor_returns_empty_text():
+    """<a> wrapping only an <img> has no readable text."""
+    doc = lxml_html.fromstring(
+        '<html><body><a href="/"><img src="logo.png" alt="Home"></a></body></html>'
+    )
+    links = _extract_links(doc, "https://example.com/")
+    assert len(links) == 1
+    assert links[0]["text"] == ""
+
+
+# ---- PR 3: _extract_images ------------------------------------------------
+
+
+def test_extract_images_basic():
+    doc = lxml_html.fromstring("""
+        <html><body>
+          <img src="photo.jpg" alt="A photo">
+          <img src="/images/icon.png">
+        </body></html>
+    """)
+    images = _extract_images(doc, "https://example.com/")
+    assert len(images) == 2
+    assert images[0]["url"] == "https://example.com/photo.jpg"
+    assert images[0]["alt"] == "A photo"
+    assert images[1]["url"] == "https://example.com/images/icon.png"
+    assert images[1]["alt"] == ""
+
+
+def test_extract_images_skips_empty_src():
+    doc = lxml_html.fromstring(
+        '<html><body><img src=""><img alt="no src"><img src="real.jpg"></body></html>'
+    )
+    images = _extract_images(doc, "https://example.com/")
+    assert len(images) == 1
+    assert images[0]["url"] == "https://example.com/real.jpg"
+
+
+def test_extract_images_skips_data_uris():
+    doc = lxml_html.fromstring(
+        '<html><body><img src="data:image/png;base64,AAAA">'
+        '<img src="https://example.com/real.png"></body></html>'
+    )
+    images = _extract_images(doc, "https://example.com/")
+    assert len(images) == 1
+    assert images[0]["url"] == "https://example.com/real.png"
+
+
+def test_extract_images_includes_width_height_as_ints():
+    doc = lxml_html.fromstring(
+        '<html><body><img src="a.jpg" width="800" height="600"></body></html>'
+    )
+    images = _extract_images(doc, "https://example.com/")
+    assert images[0]["width"] == 800
+    assert images[0]["height"] == 600
+
+
+def test_extract_images_skips_non_integer_dimensions():
+    """width='50%' or height='auto' should be dropped, not emitted."""
+    doc = lxml_html.fromstring(
+        '<html><body><img src="a.jpg" width="50%" height="auto"></body></html>'
+    )
+    images = _extract_images(doc, "https://example.com/")
+    assert len(images) == 1
+    assert "width" not in images[0]
+    assert "height" not in images[0]
+
+
+def test_extract_images_no_base_url_emits_raw_src():
+    doc = lxml_html.fromstring(
+        '<html><body><img src="/img/photo.jpg"></body></html>'
+    )
+    images = _extract_images(doc, None)
+    assert images[0]["url"] == "/img/photo.jpg"
+
+
+# ---- PR 3: html_to_markdown integration -----------------------------------
+
+
+_LINKS_IMAGES_HTML = """
+<html><head><title>Test Page</title></head>
+<body>
+  <article>
+    <h1>Links & Images</h1>
+    <p>Check out <a href="https://example.com/about">About</a> and
+       <a href="https://other.com/">External</a>.</p>
+    <img src="/hero.jpg" alt="Hero image" width="1200" height="630">
+    <a href="mailto:a@b.com">email (skipped)</a>
+  </article>
+</body></html>
+"""
+
+
+def test_html_to_markdown_populates_links():
+    out = html_to_markdown(_LINKS_IMAGES_HTML, url="https://example.com/")
+    assert len(out.links) == 2
+    urls = {l["url"] for l in out.links}
+    assert "https://example.com/about" in urls
+    assert "https://other.com/" in urls
+    # mailto: is skipped
+    assert not any("mailto" in l["url"] for l in out.links)
+
+
+def test_html_to_markdown_populates_images():
+    out = html_to_markdown(_LINKS_IMAGES_HTML, url="https://example.com/")
+    assert len(out.images) == 1
+    assert out.images[0]["url"] == "https://example.com/hero.jpg"
+    assert out.images[0]["alt"] == "Hero image"
+    assert out.images[0]["width"] == 1200
+    assert out.images[0]["height"] == 630
+
+
+def test_html_to_markdown_links_and_images_default_to_empty_lists():
+    """Empty input should still produce empty lists, not crash."""
+    out = html_to_markdown("")
+    assert out.links == []
+    assert out.images == []
