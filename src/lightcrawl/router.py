@@ -449,7 +449,7 @@ class Router:
                 f"profile {req.profile!r} status={meta.status}",
                 attempts,
                 suggestions=[
-                    f"re-login: `refetch auth login {req.profile} <login URL>`",
+                    f"re-login: `lightcrawl auth login {req.profile} <login URL>`",
                 ],
             )
 
@@ -476,7 +476,7 @@ class Router:
                 f"profile {req.profile!r} no longer valid (server returned login wall)",
                 attempts,
                 suggestions=[
-                    f"re-login: `refetch auth login {req.profile} <login URL>`",
+                    f"re-login: `lightcrawl auth login {req.profile} <login URL>`",
                 ],
             )
 
@@ -631,7 +631,7 @@ def _format_body(fmt: str, extracted: content_mod.ExtractedContent, raw_html: st
 
 
 def _write_screenshot(url: str, png: bytes) -> str:
-    """Persist a screenshot under `~/.refetch/screenshots/{sha1(url)}.png`
+    """Persist a screenshot under `~/.lightcrawl/screenshots/{sha1(url)}.png`
     and return its absolute path.
 
     Overwrite semantics — same URL re-screenshotted clobbers the prior
@@ -696,8 +696,8 @@ def _login_required(url: str, attempts: list[Attempt]) -> dict:
         "the page requires login; no profile was supplied",
         attempts,
         suggestions=[
-            "create a profile: `refetch auth login <short-site-name> <login URL>`",
-            "if you already have a profile, retry with `refetch fetch <url> --profile <name>`",
+            "create a profile: `lightcrawl auth login <short-site-name> <login URL>`",
+            "if you already have a profile, retry with `lightcrawl fetch <url> --profile <name>`",
         ],
     )
 
@@ -706,8 +706,8 @@ def _blocked_suggestions(url: str, *, has_profile: bool) -> list[str]:
     out = []
     if not has_profile:
         out.append(
-            "the site may need login: `refetch auth login <name> <login URL>` "
-            "then `refetch fetch <url> --profile <name>`"
+            "the site may need login: `lightcrawl auth login <name> <login URL>` "
+            "then `lightcrawl fetch <url> --profile <name>`"
         )
-    out.append(f"try archive: `refetch fetch https://web.archive.org/web/{url}`")
+    out.append(f"try archive: `lightcrawl fetch https://web.archive.org/web/{url}`")
     return out

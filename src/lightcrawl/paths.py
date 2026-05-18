@@ -1,6 +1,6 @@
 from pathlib import Path
 
-ROOT = Path.home() / ".refetch"
+ROOT = Path.home() / ".lightcrawl"
 DUMPS = ROOT / "dumps"
 PROFILES = ROOT / "profiles"
 LOGS = ROOT / "logs"

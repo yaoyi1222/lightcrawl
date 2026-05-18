@@ -13,10 +13,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from refetch.errors import ErrorCode, FetchError
-from refetch.fetch_http import HttpResult
-from refetch.fetch_pdf import PdfResult, fetch_pdf
-from refetch.router import FetchRequest, Router
+from lightcrawl.errors import ErrorCode, FetchError
+from lightcrawl.fetch_http import HttpResult
+from lightcrawl.fetch_pdf import PdfResult, fetch_pdf
+from lightcrawl.router import FetchRequest, Router
 
 
 @pytest.fixture
@@ -27,12 +27,12 @@ def router():
 
 @pytest.fixture(autouse=True)
 def _isolate_paths(tmp_path, monkeypatch):
-    monkeypatch.setattr("refetch.paths.ROOT", tmp_path)
-    monkeypatch.setattr("refetch.paths.DUMPS", tmp_path / "dumps")
-    monkeypatch.setattr("refetch.paths.PROFILES", tmp_path / "profiles")
-    monkeypatch.setattr("refetch.paths.LOGS", tmp_path / "logs")
-    monkeypatch.setattr("refetch.content.DUMPS", tmp_path / "dumps")
-    monkeypatch.setattr("refetch.auth.PROFILES", tmp_path / "profiles")
+    monkeypatch.setattr("lightcrawl.paths.ROOT", tmp_path)
+    monkeypatch.setattr("lightcrawl.paths.DUMPS", tmp_path / "dumps")
+    monkeypatch.setattr("lightcrawl.paths.PROFILES", tmp_path / "profiles")
+    monkeypatch.setattr("lightcrawl.paths.LOGS", tmp_path / "logs")
+    monkeypatch.setattr("lightcrawl.content.DUMPS", tmp_path / "dumps")
+    monkeypatch.setattr("lightcrawl.auth.PROFILES", tmp_path / "profiles")
     (tmp_path / "dumps").mkdir(parents=True)
     (tmp_path / "profiles").mkdir(parents=True)
 
@@ -63,7 +63,7 @@ def test_fetch_pdf_two_pages(monkeypatch):
     page2.extract_text.return_value = "Page Two Content"
     mock_reader.pages = [page1, page2]
 
-    monkeypatch.setattr("refetch.fetch_pdf.ccr.get",
+    monkeypatch.setattr("lightcrawl.fetch_pdf.ccr.get",
                         lambda *a, **kw: _fake_curl_response())
     monkeypatch.setattr("pypdf.PdfReader",
                         lambda *a, **kw: mock_reader)
@@ -83,7 +83,7 @@ def test_fetch_pdf_no_text_layer(monkeypatch):
     page2.extract_text.return_value = "   "  # whitespace-only → stripped
     mock_reader.pages = [page1, page2]
 
-    monkeypatch.setattr("refetch.fetch_pdf.ccr.get",
+    monkeypatch.setattr("lightcrawl.fetch_pdf.ccr.get",
                         lambda *a, **kw: _fake_curl_response())
     monkeypatch.setattr("pypdf.PdfReader",
                         lambda *a, **kw: mock_reader)
@@ -95,7 +95,7 @@ def test_fetch_pdf_no_text_layer(monkeypatch):
 
 def test_fetch_pdf_rejects_non_pdf_content_type(monkeypatch):
     """text/html Content-Type + no %PDF magic → UNSUPPORTED_CONTENT_TYPE."""
-    monkeypatch.setattr("refetch.fetch_pdf.ccr.get",
+    monkeypatch.setattr("lightcrawl.fetch_pdf.ccr.get",
                         lambda *a, **kw: _fake_curl_response(
                             content=b"<html>not a pdf</html>",
                             content_type="text/html",
@@ -112,7 +112,7 @@ def test_fetch_pdf_accepts_magic_bytes_without_content_type(monkeypatch):
     mock_reader.pages = [MagicMock()]
     mock_reader.pages[0].extract_text.return_value = "Valid PDF"
 
-    monkeypatch.setattr("refetch.fetch_pdf.ccr.get",
+    monkeypatch.setattr("lightcrawl.fetch_pdf.ccr.get",
                         lambda *a, **kw: _fake_curl_response(content_type=""))
     monkeypatch.setattr("pypdf.PdfReader",
                         lambda *a, **kw: mock_reader)
@@ -128,7 +128,7 @@ def test_fetch_pdf_timeout_maps_to_fetch_error(monkeypatch):
     def raise_timeout(*a, **kw):
         raise curl_cffi.requests.errors.RequestsError("Connection timed out")
 
-    monkeypatch.setattr("refetch.fetch_pdf.ccr.get", raise_timeout)
+    monkeypatch.setattr("lightcrawl.fetch_pdf.ccr.get", raise_timeout)
     with pytest.raises(FetchError) as exc:
         fetch_pdf("https://example.com/doc.pdf")
     assert exc.value.code == ErrorCode.TIMEOUT
@@ -141,7 +141,7 @@ def test_fetch_pdf_other_curl_error_maps_to_pdf_fetch_blocked(monkeypatch):
     def raise_ssl(*a, **kw):
         raise curl_cffi.requests.errors.RequestsError("SSL handshake failed")
 
-    monkeypatch.setattr("refetch.fetch_pdf.ccr.get", raise_ssl)
+    monkeypatch.setattr("lightcrawl.fetch_pdf.ccr.get", raise_ssl)
     with pytest.raises(FetchError) as exc:
         fetch_pdf("https://example.com/doc.pdf")
     assert exc.value.code == ErrorCode.PDF_FETCH_BLOCKED
@@ -149,7 +149,7 @@ def test_fetch_pdf_other_curl_error_maps_to_pdf_fetch_blocked(monkeypatch):
 
 def test_fetch_pdf_content_too_large(monkeypatch):
     """Response > 50MB → CONTENT_TOO_LARGE."""
-    monkeypatch.setattr("refetch.fetch_pdf.ccr.get",
+    monkeypatch.setattr("lightcrawl.fetch_pdf.ccr.get",
                         lambda *a, **kw: _fake_curl_response(
                             content=b"x" * (50 * 1024 * 1024 + 1),
                         ))
@@ -161,7 +161,7 @@ def test_fetch_pdf_content_too_large(monkeypatch):
 
 def test_fetch_pdf_corrupt_pdf_raises(monkeypatch):
     """pypdf can't open the file → UNSUPPORTED_CONTENT_TYPE."""
-    monkeypatch.setattr("refetch.fetch_pdf.ccr.get",
+    monkeypatch.setattr("lightcrawl.fetch_pdf.ccr.get",
                         lambda *a, **kw: _fake_curl_response(
                             content=b"not a pdf at all",
                             content_type="application/pdf",
@@ -186,8 +186,8 @@ async def test_pdf_router_integration_success(router):
             elapsed_ms=42,
         )
 
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_pdf.fetch_pdf", side_effect=fake_fetch_pdf):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_pdf.fetch_pdf", side_effect=fake_fetch_pdf):
         out = await router.fetch(
             FetchRequest(url="https://example.com/doc.pdf")
         )
@@ -207,8 +207,8 @@ async def test_pdf_router_integration_failure(router):
     def fake_fetch_pdf(*args, **kwargs):
         raise FetchError(ErrorCode.PDF_NO_TEXT_LAYER, "no text")
 
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_pdf.fetch_pdf", side_effect=fake_fetch_pdf):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_pdf.fetch_pdf", side_effect=fake_fetch_pdf):
         out = await router.fetch(
             FetchRequest(url="https://example.com/scan.pdf")
         )
@@ -239,8 +239,8 @@ async def test_pdf_query_param_not_treated_as_pdf(router):
         content_type="text/html",
         elapsed_ms=5,
     )
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_http.fetch", return_value=fake):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_http.fetch", return_value=fake):
         out = await router.fetch(
             FetchRequest(url="https://example.com/search?q=foo.pdf")
         )
@@ -251,7 +251,7 @@ async def test_pdf_query_param_not_treated_as_pdf(router):
 
 async def test_ssrf_guards_still_apply_to_pdf_urls(router):
     """PDF dispatch must come AFTER SSRF validation — private IP PDFs blocked."""
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="127.0.0.1"):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="127.0.0.1"):
         out = await router.fetch(
             FetchRequest(url="http://localhost/doc.pdf")
         )

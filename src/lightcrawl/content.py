@@ -57,7 +57,7 @@ _HEADING_LINE_RE = re.compile(r"^(#{1,6})\s+(.+?)(?:\s+#+\s*)?$")
 #
 # A `None` value marks hosts where no selector helps (e.g. login walls): the
 # matching `DOMAIN_HINTS` entry tells the agent what to do instead (auth or
-# refetch via a different URL).
+# re-fetch via a different URL).
 DOMAIN_SELECTORS: dict[str, str | None] = {
     # Wikipedia: skip the language list, left nav, footer.
     "wikipedia.org":             "#mw-content-text",
@@ -85,9 +85,9 @@ DOMAIN_SELECTORS: dict[str, str | None] = {
 }
 
 DOMAIN_HINTS: dict[str, str] = {
-    "x.com":          "x.com requires authentication; run `refetch auth login twitter https://x.com/login` then retry with `--profile twitter`",
-    "twitter.com":    "twitter.com requires authentication; run `refetch auth login twitter https://x.com/login` then retry with `--profile twitter`",
-    "www.reddit.com": "www.reddit.com is an SPA shell over HTTP; refetch via https://old.reddit.com/<same path> for server-rendered content",
+    "x.com":          "x.com requires authentication; run `lightcrawl auth login twitter https://x.com/login` then retry with `--profile twitter`",
+    "twitter.com":    "twitter.com requires authentication; run `lightcrawl auth login twitter https://x.com/login` then retry with `--profile twitter`",
+    "www.reddit.com": "www.reddit.com is an SPA shell over HTTP; re-fetch via https://old.reddit.com/<same path> for server-rendered content",
 }
 
 

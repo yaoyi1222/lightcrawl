@@ -1,4 +1,4 @@
-"""Run baseline vs refetch over a URL set and emit JSON results.
+"""Run baseline vs lightcrawl over a URL set and emit JSON results.
 
 Usage:
   .venv/bin/python -m bench.runner [--urls bench/urls.toml] [--out bench/results/run.json]
@@ -24,7 +24,7 @@ from pathlib import Path
 # Make src/ importable when running from repo root without install
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from refetch.router import FetchRequest, Router  # noqa: E402
+from lightcrawl.router import FetchRequest, Router  # noqa: E402
 
 from . import baseline, tokens  # noqa: E402
 

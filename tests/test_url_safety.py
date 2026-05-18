@@ -2,8 +2,8 @@ from unittest.mock import patch
 
 import pytest
 
-from refetch.errors import ErrorCode, FetchError
-from refetch.url_safety import domain_matches, etld1, validate_url
+from lightcrawl.errors import ErrorCode, FetchError
+from lightcrawl.url_safety import domain_matches, etld1, validate_url
 
 
 def test_etld1_basic():
@@ -24,27 +24,27 @@ def test_validate_rejects_non_http():
 
 
 def test_validate_rejects_loopback():
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="127.0.0.1"):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="127.0.0.1"):
         with pytest.raises(FetchError) as ei:
             validate_url("http://localhost/admin")
         assert ei.value.code == ErrorCode.URL_NOT_ALLOWED
 
 
 def test_validate_rejects_private_net():
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="10.0.0.5"):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="10.0.0.5"):
         with pytest.raises(FetchError) as ei:
             validate_url("http://internal.example/")
         assert ei.value.code == ErrorCode.URL_NOT_ALLOWED
 
 
 def test_validate_rejects_metadata_ip():
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="169.254.169.254"):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="169.254.169.254"):
         with pytest.raises(FetchError):
             validate_url("http://metadata.example/")
 
 
 def test_validate_allows_public():
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"):
         r = validate_url("https://example.com/foo")
         assert r.hostname == "example.com"
         assert r.etld1 == "example.com"

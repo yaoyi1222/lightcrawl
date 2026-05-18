@@ -17,9 +17,9 @@ from unittest.mock import patch
 
 import pytest
 
-from refetch import content as content_mod
-from refetch.fetch_http import HttpResult
-from refetch.router import FetchRequest, Router
+from lightcrawl import content as content_mod
+from lightcrawl.fetch_http import HttpResult
+from lightcrawl.router import FetchRequest, Router
 
 
 @pytest.fixture
@@ -29,12 +29,12 @@ def router():
 
 @pytest.fixture(autouse=True)
 def _isolate_paths(tmp_path, monkeypatch):
-    monkeypatch.setattr("refetch.paths.ROOT", tmp_path)
-    monkeypatch.setattr("refetch.paths.DUMPS", tmp_path / "dumps")
-    monkeypatch.setattr("refetch.paths.PROFILES", tmp_path / "profiles")
-    monkeypatch.setattr("refetch.paths.LOGS", tmp_path / "logs")
-    monkeypatch.setattr("refetch.content.DUMPS", tmp_path / "dumps")
-    monkeypatch.setattr("refetch.auth.PROFILES", tmp_path / "profiles")
+    monkeypatch.setattr("lightcrawl.paths.ROOT", tmp_path)
+    monkeypatch.setattr("lightcrawl.paths.DUMPS", tmp_path / "dumps")
+    monkeypatch.setattr("lightcrawl.paths.PROFILES", tmp_path / "profiles")
+    monkeypatch.setattr("lightcrawl.paths.LOGS", tmp_path / "logs")
+    monkeypatch.setattr("lightcrawl.content.DUMPS", tmp_path / "dumps")
+    monkeypatch.setattr("lightcrawl.auth.PROFILES", tmp_path / "profiles")
     (tmp_path / "dumps").mkdir(parents=True)
     (tmp_path / "profiles").mkdir(parents=True)
 
@@ -71,16 +71,16 @@ async def test_headers_passed_to_l1(router):
         seen["headers"] = headers
         return _ok(_LONG_HTML)
 
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_http.fetch", side_effect=fake_fetch):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_http.fetch", side_effect=fake_fetch):
         out = await router.fetch(
             FetchRequest(
                 url="https://example.com/",
-                headers={"X-Refetch-Test": "1", "Referer": "https://r.example/"},
+                headers={"X-Lightcrawl-Test": "1", "Referer": "https://r.example/"},
             )
         )
     assert out["ok"] is True
-    assert seen["headers"] == {"X-Refetch-Test": "1", "Referer": "https://r.example/"}
+    assert seen["headers"] == {"X-Lightcrawl-Test": "1", "Referer": "https://r.example/"}
 
 
 async def test_headers_default_empty_does_not_pass_dict_to_l1(router):
@@ -93,8 +93,8 @@ async def test_headers_default_empty_does_not_pass_dict_to_l1(router):
         seen["headers"] = headers
         return _ok("<html><body><article><p>body body body.</p></article></body></html>")
 
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_http.fetch", side_effect=fake_fetch):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_http.fetch", side_effect=fake_fetch):
         await router.fetch(FetchRequest(url="https://example.com/"))
     assert seen["headers"] is None
 
@@ -110,7 +110,7 @@ async def test_headers_passed_to_l2(router):
             content_type="text/html", elapsed_ms=5,
         )
 
-    from refetch import fetch_browser as fb_mod
+    from lightcrawl import fetch_browser as fb_mod
 
     async def fake_l2(pool, url, *, wait_for=None, timeout=10.0, storage_state=None,
                      headers=None, **_kwargs):
@@ -121,9 +121,9 @@ async def test_headers_passed_to_l2(router):
             content_type="text/html", elapsed_ms=10,
         )
 
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_http.fetch", side_effect=fake_l1), \
-         patch("refetch.fetch_browser.fetch", side_effect=fake_l2):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_http.fetch", side_effect=fake_l1), \
+         patch("lightcrawl.fetch_browser.fetch", side_effect=fake_l2):
         out = await router.fetch(
             FetchRequest(
                 url="https://example.com/",
@@ -233,7 +233,7 @@ def test_clean_tags_rejects_malformed():
     """Regression: empty strings and CSS-selector-like inputs must be dropped
     before they reach lxml's xpath builder, otherwise `XPathEvalError` escapes
     the "errors are values, not exceptions" boundary contract."""
-    from refetch.cli import _clean_tags
+    from lightcrawl.cli import _clean_tags
 
     assert _clean_tags(["article", "", "nav"]) == ["article", "nav"]
     assert _clean_tags(["div[onclick]"]) == []          # CSS attr selector
@@ -262,8 +262,8 @@ async def test_default_fetch_url_response_keys_unchanged(router):
         "escalation heuristics that look at tiny bodies.</p></article>"
         "</body></html>"
     )
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_http.fetch", return_value=fake):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_http.fetch", return_value=fake):
         out = await router.fetch(FetchRequest(url="https://example.com/"))
 
     expected_keys = {

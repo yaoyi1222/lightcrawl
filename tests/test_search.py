@@ -5,26 +5,26 @@ from unittest.mock import patch
 
 import pytest
 
-from refetch import auth as auth_mod
-from refetch.router import Router
-from refetch.search.backends.base import BackendError
-from refetch.search.service import (
+from lightcrawl import auth as auth_mod
+from lightcrawl.router import Router
+from lightcrawl.search.backends.base import BackendError
+from lightcrawl.search.service import (
     SearchAndReadRequest,
     SearchRequest,
     SearchService,
 )
-from refetch.search.types import SearchResult
+from lightcrawl.search.types import SearchResult
 
 
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path, monkeypatch):
-    monkeypatch.setattr("refetch.paths.ROOT", tmp_path)
-    monkeypatch.setattr("refetch.paths.DUMPS", tmp_path / "dumps")
-    monkeypatch.setattr("refetch.paths.PROFILES", tmp_path / "profiles")
-    monkeypatch.setattr("refetch.paths.LOGS", tmp_path / "logs")
-    monkeypatch.setattr("refetch.content.DUMPS", tmp_path / "dumps")
-    monkeypatch.setattr("refetch.search.service.DUMPS", tmp_path / "dumps")
-    monkeypatch.setattr("refetch.auth.PROFILES", tmp_path / "profiles")
+    monkeypatch.setattr("lightcrawl.paths.ROOT", tmp_path)
+    monkeypatch.setattr("lightcrawl.paths.DUMPS", tmp_path / "dumps")
+    monkeypatch.setattr("lightcrawl.paths.PROFILES", tmp_path / "profiles")
+    monkeypatch.setattr("lightcrawl.paths.LOGS", tmp_path / "logs")
+    monkeypatch.setattr("lightcrawl.content.DUMPS", tmp_path / "dumps")
+    monkeypatch.setattr("lightcrawl.search.service.DUMPS", tmp_path / "dumps")
+    monkeypatch.setattr("lightcrawl.auth.PROFILES", tmp_path / "profiles")
     (tmp_path / "dumps").mkdir(parents=True)
     (tmp_path / "profiles").mkdir(parents=True)
 
@@ -290,7 +290,7 @@ async def test_search_no_profile_marks_any_active_domain(tmp_path):
 async def test_search_and_read_fetch_timeout_floor_is_15s(monkeypatch):
     """Even when the search ate most of the budget, fetches must get
     at least MIN_FETCH_TIMEOUT_MS so L2 has room to launch a browser."""
-    from refetch.search.service import MIN_FETCH_TIMEOUT_MS
+    from lightcrawl.search.service import MIN_FETCH_TIMEOUT_MS
 
     fake = FakeBackend(results=[
         SearchResult(rank=1, title="A", url="https://a.example/1", snippet="s"),

@@ -32,7 +32,7 @@ import tomllib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from refetch import fetch_browser, fetch_http  # noqa: E402
+from lightcrawl import fetch_browser, fetch_http  # noqa: E402
 
 import tiktoken  # noqa: E402
 import trafilatura  # noqa: E402
@@ -262,7 +262,7 @@ def _fetch_http_with_retry(url: str, attempts: int = 2, timeout: float = 20.0):
             last = e
             time.sleep(0.6 * (i + 1))
     import httpx
-    from refetch.fetch_http import HttpResult
+    from lightcrawl.fetch_http import HttpResult
     try:
         with httpx.Client(timeout=timeout, follow_redirects=True,
                           headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) "

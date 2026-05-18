@@ -1,14 +1,14 @@
-# Contributing to Refetch
+# Contributing to Lightcrawl
 
 ## Architecture
 
 ```
                 Claude Code / Codex / Gemini / any agent
                       │
-                      │  Bash tool → `refetch <subcmd>` → JSON on stdout
+                      │  Bash tool → `lightcrawl <subcmd>` → JSON on stdout
                       ▼
 ┌───────────────────────────────────────────────────┐
-│           refetch CLI (one Python process per invocation) │
+│           lightcrawl CLI (one Python process per invocation) │
 │                                                   │
 │   ┌─────────────────┐    ┌────────────────────┐   │
 │   │ Search Service  │    │ Fetch Router       │   │
@@ -34,7 +34,7 @@
 └───────────────────────────────────────────────────┘
                       │
                       ▼
-                ~/.refetch/
+                ~/.lightcrawl/
                 ├── dumps/
                 ├── profiles/
                 └── logs/
@@ -47,7 +47,7 @@ Every public CLI subcommand routes through `cli._safe_run()`, which converts a `
 1. `_should_escalate_to_browser(status, html)` — escalates on 403/429/503, on Cloudflare challenge detection (a 2-level keyword system: `_CF_CHALLENGE_STRONG` and `_CF_CHALLENGE_WEAK`), and on `visible_text_ratio(html) < 0.01` for HTML > 2000 bytes (catches SPA shells).
 2. Login-wall detection in `content.py` — escalates to authed strategy if the page text matches "sign in to continue" / etc.
 
-**Single Browser, multi-context** (`fetch_browser.py`): one Chromium instance is reused for the whole process; each fetch gets a fresh `BrowserContext`. Authed fetches load a `storage_state` JSON from `~/.refetch/profiles/<name>.json`.
+**Single Browser, multi-context** (`fetch_browser.py`): one Chromium instance is reused for the whole process; each fetch gets a fresh `BrowserContext`. Authed fetches load a `storage_state` JSON from `~/.lightcrawl/profiles/<name>.json`.
 
 **Profile binding** (`auth.py` + `url_safety.py`): each profile is bound to the eTLD+1 of the login URL (computed via `tldextract`). A `twitter` profile bound to `x.com` cannot fetch `attacker.com/x.com/...` — `domain_matches()` enforces this in the router before any fetch.
 
@@ -59,14 +59,14 @@ Every public CLI subcommand routes through `cli._safe_run()`, which converts a `
 - `_dom_headings(target)` extracts `<h1>`–`<h6>` directly from DOM.
 - `_locate_headings_in_markdown` matches DOM heading text to ATX heading lines using `_strip_md_formatting()`.
 - `detect_spa_shell(html)` detects empty `<div id="root">` / `<div id="__next">` regardless of page length.
-- Overflow handling: anything over `max_inline_tokens` is dumped to `~/.refetch/dumps/<sha1>.md`; the response carries `dump_path` plus the heading list with line numbers.
+- Overflow handling: anything over `max_inline_tokens` is dumped to `~/.lightcrawl/dumps/<sha1>.md`; the response carries `dump_path` plus the heading list with line numbers.
 
 **Search service** (`search/service.py`): `search_and_read` runs `search` then fans out `Router.fetch` calls via `asyncio.gather(..., return_exceptions=True)` with each fetch wrapped in a `try/except` that returns a failure dict — one crash cannot lose the other in-flight results.
 
 ## Project layout
 
 ```
-src/refetch/
+src/lightcrawl/
 ├── cli.py               # argparse entry; one async subcommand per public op + _safe_run envelope
 ├── router.py            # Strategy router (L1 → L2 → L3)
 ├── fetch_http.py        # L1: curl_cffi
@@ -74,7 +74,7 @@ src/refetch/
 ├── auth.py              # L3: profile manager, interactive_login
 ├── content.py           # deep DOM cleaning + markdownify + DOM-based headings + dump-on-overflow
 ├── url_safety.py        # SSRF guard, eTLD+1
-├── paths.py             # ~/.refetch/
+├── paths.py             # ~/.lightcrawl/
 ├── errors.py            # ErrorCode enum
 └── search/
     ├── service.py       # search(), search_and_read()
@@ -84,14 +84,14 @@ src/refetch/
         ├── brave.py
         ├── serper.py
         └── tavily.py
-skills/refetch/SKILL.md
+skills/lightcrawl/SKILL.md
 tests/                   # fully offline unit tests
 bench/                   # tiktoken-based token comparison harness
 ```
 
 ## Benchmarks
 
-Run a 10-URL benchmark comparing the naive built-in fetcher (`httpx` + markdownify whole page) against Refetch:
+Run a 10-URL benchmark comparing the naive built-in fetcher (`httpx` + markdownify whole page) against Lightcrawl:
 
 ```bash
 .venv/bin/python -m bench.runner --out bench/results/full.json
@@ -100,7 +100,7 @@ Run a 10-URL benchmark comparing the naive built-in fetcher (`httpx` + markdowni
 
 Latest results (counted with tiktoken `cl100k_base`):
 
-| Category | Baseline tokens | Refetch auto | Refetch + selector | Saving (auto) | Saving (selector) |
+| Category | Baseline tokens | Lightcrawl auto | Lightcrawl + selector | Saving (auto) | Saving (selector) |
 |---|---:|---:|---:|---:|---:|
 | Wikipedia (long article) | 67.1k | 9.6k | 8.0k | ↓85.7% | **↓88.1%** |
 | Static doc (Python docs) | 22.7k | 4.8k | 4.5k | ↓78.8% | ↓80.1% |
@@ -111,9 +111,9 @@ Latest results (counted with tiktoken `cl100k_base`):
 
 ¹ Pages that are mostly content with little boilerplate get little extraction benefit.
 
-`Refetch auto` is `refetch fetch <url>` with no hint — what the agent gets on the first call. `Refetch + selector` adds a `--selector` from the response's `suggested_selectors` field.
+`Lightcrawl auto` is `lightcrawl fetch <url>` with no hint — what the agent gets on the first call. `Lightcrawl + selector` adds a `--selector` from the response's `suggested_selectors` field.
 
-Success rate: **10/10 baseline, 10/10 Refetch auto, 7/7 Refetch + selector**. Full per-URL table in [`bench/results/full_v2.md`](bench/results/full_v2.md).
+Success rate: **10/10 baseline, 10/10 Lightcrawl auto, 7/7 Lightcrawl + selector**. Full per-URL table in [`bench/results/full_v2.md`](bench/results/full_v2.md).
 
 ## Development
 
@@ -136,7 +136,7 @@ Success rate: **10/10 baseline, 10/10 Refetch auto, 7/7 Refetch + selector**. Fu
 
 Contributions welcome — especially:
 
-- New search backends (one file in `src/refetch/search/backends/`, follow `brave.py` as a template, ~80 lines)
+- New search backends (one file in `src/lightcrawl/search/backends/`, follow `brave.py` as a template, ~80 lines)
 - Benchmark URLs that exercise interesting failure modes
 - Bug reports with a reproducer URL
 

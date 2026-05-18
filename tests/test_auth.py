@@ -1,12 +1,12 @@
 import pytest
 
-from refetch import auth
-from refetch.errors import ErrorCode, FetchError
+from lightcrawl import auth
+from lightcrawl.errors import ErrorCode, FetchError
 
 
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path, monkeypatch):
-    monkeypatch.setattr("refetch.auth.PROFILES", tmp_path)
+    monkeypatch.setattr("lightcrawl.auth.PROFILES", tmp_path)
 
 
 def test_save_and_load_profile(tmp_path):
@@ -71,8 +71,8 @@ def test_find_free_port_skips_occupied(monkeypatch):
 def test_find_chrome_returns_string_or_raises(monkeypatch):
     """On systems without Chrome we should get a clear FetchError, not a
     silent `None` that breaks downstream subprocess.Popen with EFAULT."""
-    monkeypatch.setattr("refetch.auth.shutil.which", lambda name: None)
-    monkeypatch.setattr("refetch.auth.sys.platform", "linux")
+    monkeypatch.setattr("lightcrawl.auth.shutil.which", lambda name: None)
+    monkeypatch.setattr("lightcrawl.auth.sys.platform", "linux")
     with pytest.raises(FetchError) as ei:
         auth._find_chrome()
     assert ei.value.code == ErrorCode.UNKNOWN
@@ -80,9 +80,9 @@ def test_find_chrome_returns_string_or_raises(monkeypatch):
 
 
 def test_find_chrome_uses_shutil_which_on_linux(monkeypatch):
-    monkeypatch.setattr("refetch.auth.sys.platform", "linux")
+    monkeypatch.setattr("lightcrawl.auth.sys.platform", "linux")
     monkeypatch.setattr(
-        "refetch.auth.shutil.which",
+        "lightcrawl.auth.shutil.which",
         lambda name: "/usr/bin/google-chrome" if name == "google-chrome" else None,
     )
     assert auth._find_chrome() == "/usr/bin/google-chrome"

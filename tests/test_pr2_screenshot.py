@@ -20,11 +20,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from refetch import fetch_browser as fb_mod
-from refetch.errors import ErrorCode
-from refetch.fetch_browser import BrowserResult
-from refetch.fetch_http import HttpResult
-from refetch.router import (
+from lightcrawl import fetch_browser as fb_mod
+from lightcrawl.errors import ErrorCode
+from lightcrawl.fetch_browser import BrowserResult
+from lightcrawl.fetch_http import HttpResult
+from lightcrawl.router import (
     FetchRequest,
     Router,
     _format_body,
@@ -40,13 +40,13 @@ def router():
 
 @pytest.fixture(autouse=True)
 def _isolate_paths(tmp_path, monkeypatch):
-    monkeypatch.setattr("refetch.paths.ROOT", tmp_path)
-    monkeypatch.setattr("refetch.paths.DUMPS", tmp_path / "dumps")
-    monkeypatch.setattr("refetch.paths.PROFILES", tmp_path / "profiles")
-    monkeypatch.setattr("refetch.paths.LOGS", tmp_path / "logs")
-    monkeypatch.setattr("refetch.paths.SCREENSHOTS", tmp_path / "screenshots")
-    monkeypatch.setattr("refetch.content.DUMPS", tmp_path / "dumps")
-    monkeypatch.setattr("refetch.auth.PROFILES", tmp_path / "profiles")
+    monkeypatch.setattr("lightcrawl.paths.ROOT", tmp_path)
+    monkeypatch.setattr("lightcrawl.paths.DUMPS", tmp_path / "dumps")
+    monkeypatch.setattr("lightcrawl.paths.PROFILES", tmp_path / "profiles")
+    monkeypatch.setattr("lightcrawl.paths.LOGS", tmp_path / "logs")
+    monkeypatch.setattr("lightcrawl.paths.SCREENSHOTS", tmp_path / "screenshots")
+    monkeypatch.setattr("lightcrawl.content.DUMPS", tmp_path / "dumps")
+    monkeypatch.setattr("lightcrawl.auth.PROFILES", tmp_path / "profiles")
     (tmp_path / "dumps").mkdir(parents=True)
     (tmp_path / "profiles").mkdir(parents=True)
 
@@ -85,13 +85,13 @@ def test_l1_incapable_html_text_are_false():
 
 
 def test_format_body_screenshot_returns_empty_string():
-    from refetch.content import ExtractedContent
+    from lightcrawl.content import ExtractedContent
     extracted = ExtractedContent(title="t", markdown="MD", plain_text="PT")
     assert _format_body("screenshot", extracted, "<html>raw</html>") == ""
 
 
 def test_format_body_markdown_plus_screenshot_returns_markdown():
-    from refetch.content import ExtractedContent
+    from lightcrawl.content import ExtractedContent
     extracted = ExtractedContent(title="t", markdown="MD", plain_text="PT")
     assert _format_body("markdown+screenshot", extracted, "<html>raw</html>") == "MD"
 
@@ -101,11 +101,11 @@ def test_format_body_markdown_plus_screenshot_returns_markdown():
 
 def test_write_screenshot_lands_at_sha1_path(tmp_path, monkeypatch):
     # `_write_screenshot` does `from .paths import SCREENSHOTS` lazily on
-    # each call, so patching `refetch.paths.SCREENSHOTS` is sufficient and
+    # each call, so patching `lightcrawl.paths.SCREENSHOTS` is sufficient and
     # correct. If a future refactor hoists the import to module scope,
-    # ADD a `refetch.router.SCREENSHOTS` patch alongside — don't leave a
+    # ADD a `lightcrawl.router.SCREENSHOTS` patch alongside — don't leave a
     # `raising=False` no-op here pretending to cover both modes.
-    monkeypatch.setattr("refetch.paths.SCREENSHOTS", tmp_path / "screenshots")
+    monkeypatch.setattr("lightcrawl.paths.SCREENSHOTS", tmp_path / "screenshots")
 
     png = b"\x89PNG\r\n\x1a\n" + b"X" * 16
     path = _write_screenshot("https://example.com/foo", png)
@@ -124,7 +124,7 @@ def test_write_screenshot_lands_at_sha1_path(tmp_path, monkeypatch):
 def test_write_screenshot_overwrites_same_url(tmp_path, monkeypatch):
     """Spec: 'overwrite mode, no timestamp'. Second screenshot at the same
     URL must land at the same path and clobber the prior bytes."""
-    monkeypatch.setattr("refetch.paths.SCREENSHOTS", tmp_path / "screenshots")
+    monkeypatch.setattr("lightcrawl.paths.SCREENSHOTS", tmp_path / "screenshots")
 
     from pathlib import Path
 
@@ -144,7 +144,7 @@ async def test_screenshot_output_forces_l2_even_when_l1_would_succeed(
     """Even if L1 would happily return 200, an `output_format=\"screenshot\"`
     request must skip L1 entirely and go to L2. Without this the screenshot
     would never get taken."""
-    monkeypatch.setattr("refetch.paths.SCREENSHOTS", tmp_path / "screenshots")
+    monkeypatch.setattr("lightcrawl.paths.SCREENSHOTS", tmp_path / "screenshots")
 
     l1_called = {"count": 0}
 
@@ -162,9 +162,9 @@ async def test_screenshot_output_forces_l2_even_when_l1_would_succeed(
             screenshot_png=b"\x89PNG\r\n\x1a\n" + b"Y" * 16 if screenshot else None,
         )
 
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_http.fetch", side_effect=fake_l1), \
-         patch("refetch.fetch_browser.fetch", side_effect=fake_l2):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_http.fetch", side_effect=fake_l1), \
+         patch("lightcrawl.fetch_browser.fetch", side_effect=fake_l2):
         out = await router.fetch(
             FetchRequest(url="https://example.com/", output_format="screenshot")
         )
@@ -184,7 +184,7 @@ async def test_screenshot_output_forces_l2_even_when_l1_would_succeed(
 
 
 async def test_markdown_plus_screenshot_returns_both(router, tmp_path, monkeypatch):
-    monkeypatch.setattr("refetch.paths.SCREENSHOTS", tmp_path / "screenshots")
+    monkeypatch.setattr("lightcrawl.paths.SCREENSHOTS", tmp_path / "screenshots")
 
     async def fake_l2(pool, url, *, screenshot=False, **_kwargs):
         return BrowserResult(
@@ -193,8 +193,8 @@ async def test_markdown_plus_screenshot_returns_both(router, tmp_path, monkeypat
             screenshot_png=b"\x89PNG\r\n\x1a\n" + b"Z" * 16 if screenshot else None,
         )
 
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_browser.fetch", side_effect=fake_l2):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_browser.fetch", side_effect=fake_l2):
         out = await router.fetch(
             FetchRequest(url="https://example.com/", output_format="markdown+screenshot")
         )
@@ -228,7 +228,7 @@ async def test_binary_url_rejected_even_with_screenshot_format(router):
 async def test_ssrf_rejected_even_with_screenshot_format(router):
     """Same call-order rule for SSRF: a private IP URL must be blocked
     before `_l1_incapable` could force it through Playwright."""
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="127.0.0.1"):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="127.0.0.1"):
         out = await router.fetch(
             FetchRequest(url="http://localhost/admin", output_format="screenshot")
         )
@@ -252,8 +252,8 @@ async def test_default_call_has_no_screenshots_key(router):
         content_type="text/html",
         elapsed_ms=5,
     )
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_http.fetch", return_value=fake):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_http.fetch", return_value=fake):
         out = await router.fetch(FetchRequest(url="https://example.com/"))
 
     expected_keys = {

@@ -1,6 +1,6 @@
 from lxml import html as lxml_html
 
-from refetch.content import (
+from lightcrawl.content import (
     Heading,
     _clean_dom,
     _dom_headings,
@@ -59,7 +59,7 @@ def test_detect_spa_shell():
 
 
 def test_maybe_dump_inline(tmp_path, monkeypatch):
-    monkeypatch.setattr("refetch.content.DUMPS", tmp_path)
+    monkeypatch.setattr("lightcrawl.content.DUMPS", tmp_path)
     inline, truncated, dump_path = maybe_dump("https://x.test/", "small body", 100)
     assert inline == "small body"
     assert not truncated
@@ -67,7 +67,7 @@ def test_maybe_dump_inline(tmp_path, monkeypatch):
 
 
 def test_maybe_dump_writes_file(tmp_path, monkeypatch):
-    monkeypatch.setattr("refetch.content.DUMPS", tmp_path)
+    monkeypatch.setattr("lightcrawl.content.DUMPS", tmp_path)
     big = "x" * (4 * 200)  # ~200 tokens at 4 chars/token
     inline, truncated, dump_path = maybe_dump("https://x.test/foo", big, max_inline_tokens=10)
     assert truncated
@@ -446,7 +446,7 @@ def test_suggested_selectors_x_com_returns_hint():
         '<html><body><div id="react-root"><div>Loading</div></div></body></html>'
     )
     sel, hint = _suggested_selectors(doc, "https://x.com/AnthropicAI")
-    assert "refetch auth login" in (hint or "")
+    assert "lightcrawl auth login" in (hint or "")
     assert sel == []  # x.com has None in DOMAIN_SELECTORS, no matching selector
 
 
@@ -505,13 +505,13 @@ def test_visible_text_ratio_empty():
 
 def test_html_to_markdown_with_url_emits_selector_hint_for_x_com():
     """When URL is an x.com page without auth, selector_hint should guide
-    the agent to `refetch auth login`."""
+    the agent to `lightcrawl auth login`."""
     html = (
         '<html><body><div id="react-root">'
         "<div>Please enable JavaScript</div></div></body></html>"
     )
     out = html_to_markdown(html, url="https://x.com/AnthropicAI")
-    assert "refetch auth login" in (out.selector_hint or "")
+    assert "lightcrawl auth login" in (out.selector_hint or "")
 
 
 def test_html_to_markdown_with_url_wikipedia_selector_first():

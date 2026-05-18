@@ -3,13 +3,13 @@
 # Each entry has:
 #   url           — the page to fetch
 #   category      — wiki | static_doc | github | spa | cloudflare | large | news
-#   selector      — optional CSS selector hint for refetch (set what a
+#   selector      — optional CSS selector hint for lightcrawl (set what a
 #                   real model would naturally pass after seeing
 #                   suggested_selectors). Baseline never uses a selector.
 #   note          — what this URL exercises
 #
 # Both fetchers receive the SAME url. Baseline = "naive WebFetch": fetch
-# entire HTML → markdownify whole document. refetch = router with
+# entire HTML → markdownify whole document. lightcrawl = router with
 # readability + (optional) selector + dump-on-overflow.
 
 [[urls]]

@@ -2,11 +2,11 @@ from unittest.mock import patch
 
 import pytest
 
-from refetch import auth as auth_mod
-from refetch.content import visible_text_ratio
-from refetch.errors import ErrorCode, FetchError
-from refetch.fetch_http import HttpResult
-from refetch.router import (
+from lightcrawl import auth as auth_mod
+from lightcrawl.content import visible_text_ratio
+from lightcrawl.errors import ErrorCode, FetchError
+from lightcrawl.fetch_http import HttpResult
+from lightcrawl.router import (
     FetchRequest,
     Router,
     _looks_like_binary_url,
@@ -23,18 +23,18 @@ def router():
 
 @pytest.fixture(autouse=True)
 def _isolate_paths(tmp_path, monkeypatch):
-    monkeypatch.setattr("refetch.paths.ROOT", tmp_path)
-    monkeypatch.setattr("refetch.paths.DUMPS", tmp_path / "dumps")
-    monkeypatch.setattr("refetch.paths.PROFILES", tmp_path / "profiles")
-    monkeypatch.setattr("refetch.paths.LOGS", tmp_path / "logs")
-    monkeypatch.setattr("refetch.content.DUMPS", tmp_path / "dumps")
-    monkeypatch.setattr("refetch.auth.PROFILES", tmp_path / "profiles")
+    monkeypatch.setattr("lightcrawl.paths.ROOT", tmp_path)
+    monkeypatch.setattr("lightcrawl.paths.DUMPS", tmp_path / "dumps")
+    monkeypatch.setattr("lightcrawl.paths.PROFILES", tmp_path / "profiles")
+    monkeypatch.setattr("lightcrawl.paths.LOGS", tmp_path / "logs")
+    monkeypatch.setattr("lightcrawl.content.DUMPS", tmp_path / "dumps")
+    monkeypatch.setattr("lightcrawl.auth.PROFILES", tmp_path / "profiles")
     (tmp_path / "dumps").mkdir(parents=True)
     (tmp_path / "profiles").mkdir(parents=True)
 
 
 async def test_blocks_private_url(router):
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="127.0.0.1"):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="127.0.0.1"):
         out = await router.fetch(FetchRequest(url="http://localhost/admin"))
     assert out["ok"] is False
     assert out["error_code"] == ErrorCode.URL_NOT_ALLOWED.value
@@ -49,8 +49,8 @@ async def test_login_required_when_wall_detected(router):
         content_type="text/html",
         elapsed_ms=10,
     )
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_http.fetch", return_value=fake):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_http.fetch", return_value=fake):
         out = await router.fetch(FetchRequest(url="https://example.com/x"))
     assert out["ok"] is False
     assert out["error_code"] == ErrorCode.LOGIN_REQUIRED.value
@@ -58,7 +58,7 @@ async def test_login_required_when_wall_detected(router):
 
 async def test_profile_domain_mismatch(router, tmp_path):
     auth_mod.save_profile("twitter", {"cookies": [], "origins": []}, "x.com")
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"):
         out = await router.fetch(
             FetchRequest(url="https://other.example.com/", profile="twitter")
         )
@@ -67,7 +67,7 @@ async def test_profile_domain_mismatch(router, tmp_path):
 
 
 async def test_profile_not_found(router):
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"):
         out = await router.fetch(
             FetchRequest(url="https://x.com/foo", profile="nonexistent")
         )
@@ -89,8 +89,8 @@ async def test_success_returns_markdown(router):
         content_type="text/html",
         elapsed_ms=10,
     )
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_http.fetch", return_value=fake):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_http.fetch", return_value=fake):
         out = await router.fetch(FetchRequest(url="https://example.com/"))
     assert out["ok"] is True
     assert out["strategy_used"] == "http"
@@ -271,7 +271,7 @@ def test_looks_like_binary_url_query_with_pdf_token_not_rejected():
 def test_default_user_agent_matches_host_os(monkeypatch):
     """The UA's platform token must agree with the host OS — a Linux UA on a
     macOS host (or vice versa) is itself a bot-detection signal."""
-    from refetch import fetch_browser
+    from lightcrawl import fetch_browser
 
     monkeypatch.setattr(fetch_browser.platform, "system", lambda: "Linux")
     ua = fetch_browser._default_user_agent()
@@ -290,7 +290,7 @@ def test_default_user_agent_matches_host_os(monkeypatch):
 async def test_pdf_url_is_dispatched_to_fetch_pdf(router):
     """PR 4: .pdf URLs are no longer rejected — they route to fetch_pdf.
     Non-.pdf binaries (e.g. .zip) are still rejected."""
-    from refetch.fetch_pdf import PdfResult
+    from lightcrawl.fetch_pdf import PdfResult
 
     def fake_fetch_pdf(url, *, timeout, headers=None):
         return PdfResult(
@@ -301,8 +301,8 @@ async def test_pdf_url_is_dispatched_to_fetch_pdf(router):
             elapsed_ms=100,
         )
 
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_pdf.fetch_pdf", side_effect=fake_fetch_pdf):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_pdf.fetch_pdf", side_effect=fake_fetch_pdf):
         out = await router.fetch(FetchRequest(url="https://arxiv.org/pdf/2301.07041.pdf"))
 
     assert out["ok"] is True
@@ -329,10 +329,10 @@ async def test_failure_response_has_all_success_keys(router):
     # PDF early-reject failure
     pdf = await router.fetch(FetchRequest(url="https://example.com/x.pdf"))
     # SSRF block failure
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="127.0.0.1"):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="127.0.0.1"):
         ssrf = await router.fetch(FetchRequest(url="http://localhost/admin"))
     # Profile-not-found failure
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"):
         prof = await router.fetch(
             FetchRequest(url="https://x.com/foo", profile="nonexistent")
         )
@@ -374,8 +374,8 @@ async def test_l1_retries_once_on_timeout_and_succeeds(router):
             raise TimeoutError("simulated transient L1 timeout")
         return _ok_html_result()
 
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_http.fetch", side_effect=fake_fetch):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_http.fetch", side_effect=fake_fetch):
         out = await router.fetch(FetchRequest(url="https://example.com/"))
 
     assert out["ok"] is True
@@ -397,9 +397,9 @@ async def test_l1_retry_failure_falls_back_to_l2(router):
         # Force browser failure too so we don't depend on Playwright wiring
         raise FetchError(ErrorCode.TIMEOUT, "L2 also down")
 
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_http.fetch", side_effect=always_timeout), \
-         patch("refetch.fetch_browser.fetch", side_effect=fake_browser):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_http.fetch", side_effect=always_timeout), \
+         patch("lightcrawl.fetch_browser.fetch", side_effect=fake_browser):
         out = await router.fetch(FetchRequest(url="https://example.com/", timeout_ms=15000))
 
     assert call_count["n"] == 2  # both L1 attempts ran
@@ -428,9 +428,9 @@ async def test_spa_navigation_loop_propagates_error_code(router):
     def fake_l1(url, *, timeout, **_kwargs):
         raise TimeoutError("force escalate")
 
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_http.fetch", side_effect=fake_l1), \
-         patch("refetch.fetch_browser.fetch", side_effect=fake_browser_spa_loop):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_http.fetch", side_effect=fake_l1), \
+         patch("lightcrawl.fetch_browser.fetch", side_effect=fake_browser_spa_loop):
         out = await router.fetch(
             FetchRequest(url="https://www.reddit.com/r/Python/", timeout_ms=15000)
         )
@@ -451,9 +451,9 @@ async def test_spa_navigation_loop_no_hint_for_unknown_domain(router):
     def fake_l1(url, *, timeout, **_kwargs):
         raise TimeoutError("force escalate")
 
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_http.fetch", side_effect=fake_l1), \
-         patch("refetch.fetch_browser.fetch", side_effect=fake_browser_spa_loop):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_http.fetch", side_effect=fake_l1), \
+         patch("lightcrawl.fetch_browser.fetch", side_effect=fake_browser_spa_loop):
         out = await router.fetch(
             FetchRequest(url="https://random-spa.example/", timeout_ms=15000)
         )
@@ -489,8 +489,8 @@ async def test_metadata_includes_links_and_images(router):
         content_type="text/html",
         elapsed_ms=5,
     )
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_http.fetch", return_value=fake):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_http.fetch", return_value=fake):
         out = await router.fetch(FetchRequest(url="https://example.com/"))
 
     assert out["ok"] is True
@@ -515,8 +515,8 @@ async def test_output_format_links_returns_json_array(router):
         content_type="text/html",
         elapsed_ms=5,
     )
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_http.fetch", return_value=fake):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_http.fetch", return_value=fake):
         out = await router.fetch(
             FetchRequest(url="https://example.com/", output_format="links")
         )
@@ -539,8 +539,8 @@ async def test_output_format_images_returns_json_array(router):
         content_type="text/html",
         elapsed_ms=5,
     )
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_http.fetch", return_value=fake):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_http.fetch", return_value=fake):
         out = await router.fetch(
             FetchRequest(url="https://example.com/", output_format="images")
         )
@@ -565,8 +565,8 @@ async def test_metadata_links_images_present_on_default_format(router):
         content_type="text/html",
         elapsed_ms=5,
     )
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_http.fetch", return_value=fake):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_http.fetch", return_value=fake):
         out = await router.fetch(FetchRequest(url="https://example.com/"))
 
     assert out["ok"] is True
@@ -580,7 +580,7 @@ async def test_metadata_links_images_present_on_default_format(router):
 async def test_failure_response_has_links_images_in_metadata(router):
     """Review fix: failure path metadata MUST include empty links/images
     lists so callers get a consistent schema across ok/error paths."""
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="127.0.0.1"):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="127.0.0.1"):
         out = await router.fetch(FetchRequest(url="http://localhost/admin"))
 
     assert out["ok"] is False

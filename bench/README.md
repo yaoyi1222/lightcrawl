@@ -1,6 +1,6 @@
 # Token-consumption benchmark
 
-Compares the **built-in WebFetch** approach against **refetch** on the
+Compares the **built-in WebFetch** approach against **lightcrawl** on the
 same set of URLs, measuring how many tokens land in the model's context.
 
 ## What "baseline" simulates

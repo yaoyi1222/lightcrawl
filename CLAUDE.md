@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`refetch` is a local CLI plus an agent-facing skill (`skills/refetch/SKILL.md`). The CLI exposes 7 subcommands: `fetch`, `search`, `search-and-read`, `list-backends`, `auth login`, `auth list`/`auth show`, `auth revoke`. Every subcommand prints a single JSON object on stdout and exits 0 on `ok: true` / 1 on `ok: false`. It is a drop-in replacement for the built-in `WebFetch` / `WebSearch` that survives Cloudflare/TLS-fingerprint blocks, JS-rendered SPAs, and login-walled pages.
+`lightcrawl` is a local CLI plus an agent-facing skill (`skills/lightcrawl/SKILL.md`). The CLI exposes 7 subcommands: `fetch`, `search`, `search-and-read`, `list-backends`, `auth login`, `auth list`/`auth show`, `auth revoke`. Every subcommand prints a single JSON object on stdout and exits 0 on `ok: true` / 1 on `ok: false`. It is a drop-in replacement for the built-in `WebFetch` / `WebSearch` that survives Cloudflare/TLS-fingerprint blocks, JS-rendered SPAs, and login-walled pages.
 
-Source layout: package lives at `src/refetch/`; tests at `tests/`; benchmark + diagnostic harness at `bench/`; the agent-facing skill at `skills/refetch/SKILL.md`. There is no MCP server in this repo — agents invoke `refetch` through their normal shell tool.
+Source layout: package lives at `src/lightcrawl/`; tests at `tests/`; benchmark + diagnostic harness at `bench/`; the agent-facing skill at `skills/lightcrawl/SKILL.md`. There is no MCP server in this repo — agents invoke `lightcrawl` through their normal shell tool.
 
 ## Common commands
 
@@ -18,9 +18,9 @@ All commands assume the repo's `.venv` is set up via `pip install -e ".[dev,benc
 .venv/bin/pytest tests/test_router.py::test_blocks_private_url   # one test
 .venv/bin/ruff check src tests bench             # lint
 
-.venv/bin/refetch auth list                # list saved profiles
-.venv/bin/refetch fetch https://example.com/   # smoke-test the fetch pipeline
-.venv/bin/refetch list-backends            # which search backends have API keys
+.venv/bin/lightcrawl auth list                # list saved profiles
+.venv/bin/lightcrawl fetch https://example.com/   # smoke-test the fetch pipeline
+.venv/bin/lightcrawl list-backends            # which search backends have API keys
 
 # Benchmark / diagnostic (hits the network)
 .venv/bin/python -m bench.runner --urls bench/urls_smoke.toml --out bench/results/smoke.json
@@ -51,7 +51,7 @@ Every async subcommand routes through `cli._safe_run()` which converts a `FetchE
 1. `_should_escalate_to_browser(status, html)` — escalates on 403/429/503, on `_looks_like_challenge(html)` (CF detection: a 2-level keyword system, see `_CF_CHALLENGE_STRONG` and `_CF_CHALLENGE_WEAK` in `router.py`), and on `visible_text_ratio(html) < 0.01` for HTML > 2000 bytes (catches SPA shells).
 2. Login-wall detection in `content.py` — escalates to authed strategy if the page text matches "sign in to continue" / etc.
 
-**Single Browser, multi-context** (`fetch_browser.py`): one Chromium instance is reused for the whole process; each fetch gets a fresh `BrowserContext`. Authed fetches load a `storage_state` JSON from `~/.refetch/profiles/<name>.json`.
+**Single Browser, multi-context** (`fetch_browser.py`): one Chromium instance is reused for the whole process; each fetch gets a fresh `BrowserContext`. Authed fetches load a `storage_state` JSON from `~/.lightcrawl/profiles/<name>.json`.
 
 **Profile binding** (`auth.py` + `url_safety.py`): each profile is bound to the eTLD+1 of the login URL (computed via `tldextract`). A `twitter` profile bound to `x.com` cannot fetch `attacker.com/x.com/...` — `domain_matches()` enforces this in the router before any fetch.
 
@@ -63,7 +63,7 @@ Every async subcommand routes through `cli._safe_run()` which converts a `FetchE
 - `_dom_headings(target)` extracts `<h1>`–`<h6>` directly from DOM (not from rendered markdown — so inline `<code>`/`<strong>`/`<em>` formatting doesn't break extraction).
 - `_locate_headings_in_markdown` matches DOM heading text to ATX heading lines using `_strip_md_formatting()` to remove backticks/asterisks/links from the markdown side before comparison. Without this, headings with inline formatting return `line=None`.
 - `detect_spa_shell(html)` returns True if `_SPA_SHELL_PATTERNS` matches an empty `<div id="root">` / `<div id="__next">` regardless of page length, OR if there's a `<noscript>` JS warning on a small page.
-- Overflow handling: anything over `max_inline_tokens` is dumped to `~/.refetch/dumps/<sha1>.md`; the response carries `dump_path` plus the heading list with line numbers so the agent can grep the dump.
+- Overflow handling: anything over `max_inline_tokens` is dumped to `~/.lightcrawl/dumps/<sha1>.md`; the response carries `dump_path` plus the heading list with line numbers so the agent can grep the dump.
 
 **Search service** (`search/service.py`): `search_and_read` runs `search` then fans out `Router.fetch` calls via `asyncio.gather(..., return_exceptions=True)` with each fetch wrapped in a `try/except` that returns a failure dict — one crash cannot lose the other in-flight results.
 
@@ -72,7 +72,7 @@ Every async subcommand routes through `cli._safe_run()` which converts a `FetchE
 - **Errors are values, not exceptions, at the public boundary.** `Router.fetch()` and `SearchService.*` always return a dict with `ok: bool` + `error_code` (a value from `errors.py::ErrorCode`). Internal code raises `FetchError(code, detail)`; the router/service/`cli._safe_run` catches and converts. Don't print raw tracebacks to stdout — it breaks the one-JSON-per-invocation contract skills rely on.
 - **L1 timeout has a known thread leak** (Bug 6 in `bug.md`, marked wontfix): `asyncio.wait_for(asyncio.to_thread(curl_cffi.fetch, ...))` cannot cancel curl_cffi's blocking I/O. The asyncio side gives up at `l1_timeout + 1.0s`; the underlying thread continues until curl's own timeout. The auto-escalation to L2 prevents repeated leaks on the same URL. Don't try to "fix" this without migrating L1 to an async HTTP client — see the wontfix section in `bug.md` for context.
 - **DOM mutation requires a two-pass collect-then-remove.** `lxml`'s `doc.iter()` invalidates if you remove elements mid-iteration. See `_clean_dom` for the canonical pattern.
-- **No fabricated content; surface real failures.** The skill (`skills/refetch/SKILL.md`) enforces an honesty contract: when a fetch fails, return the structured `error_code` rather than papering over with training data.
+- **No fabricated content; surface real failures.** The skill (`skills/lightcrawl/SKILL.md`) enforces an honesty contract: when a fetch fails, return the structured `error_code` rather than papering over with training data.
 - **Tests must stay offline.** The pytest fixture in `tests/test_router.py` patches `socket.gethostbyname` and `fetch_http.fetch`; new tests should follow the same monkeypatch pattern. Network-touching code lives in `bench/` (which is opt-in and not run by `pytest`).
 - **`readability-lxml` and `trafilatura` are bench-only.** They are listed under `[bench]` extras for the diagnostic comparison harness; the production pipeline does NOT depend on them. If you find yourself importing either from `src/`, that's a bug.
-- **The benchmark + design history is in-tree.** `plan.md`, `bug.md`, `refetch.md`, `websearch.md`, `websearch_plus.md` capture diagnostic data and prior design decisions — read them before second-guessing why a thing is the way it is.
+- **The benchmark + design history is in-tree.** `plan.md`, `bug.md`, `lightcrawl.md`, `websearch.md`, `websearch_plus.md` capture diagnostic data and prior design decisions — read them before second-guessing why a thing is the way it is.

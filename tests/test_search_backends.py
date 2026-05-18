@@ -11,9 +11,9 @@ from datetime import datetime, timedelta, timezone
 import httpx
 import pytest
 
-from refetch.search.backends.base import BackendError
-from refetch.search.backends.serper import SerperBackend
-from refetch.search.backends.tavily import TavilyBackend
+from lightcrawl.search.backends.base import BackendError
+from lightcrawl.search.backends.serper import SerperBackend
+from lightcrawl.search.backends.tavily import TavilyBackend
 
 
 def _mock(handler) -> httpx.MockTransport:

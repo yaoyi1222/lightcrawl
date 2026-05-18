@@ -429,9 +429,9 @@ def _add_auth_parser(sub: argparse._SubParsersAction) -> None:
 def main(argv: list[str] | None = None) -> int:
     ensure_dirs()
     parser = argparse.ArgumentParser(
-        prog="refetch",
+        prog="lightcrawl",
         description=(
-            "Refetch CLI — fetch URLs, search the web, and manage login "
+            "Lightcrawl CLI — fetch URLs, search the web, and manage login "
             "profiles. Every command prints a JSON object on stdout; exit "
             "code 0 means ok=true, 1 means ok=false."
         ),

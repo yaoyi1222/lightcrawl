@@ -20,11 +20,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from refetch import content as content_mod
-from refetch import fetch_browser as fb_mod
-from refetch import fetch_http as fh_mod
-from refetch.fetch_http import HttpResult
-from refetch.router import FetchRequest, Router
+from lightcrawl import content as content_mod
+from lightcrawl import fetch_browser as fb_mod
+from lightcrawl import fetch_http as fh_mod
+from lightcrawl.fetch_http import HttpResult
+from lightcrawl.router import FetchRequest, Router
 
 
 @pytest.fixture
@@ -34,12 +34,12 @@ def router():
 
 @pytest.fixture(autouse=True)
 def _isolate_paths(tmp_path, monkeypatch):
-    monkeypatch.setattr("refetch.paths.ROOT", tmp_path)
-    monkeypatch.setattr("refetch.paths.DUMPS", tmp_path / "dumps")
-    monkeypatch.setattr("refetch.paths.PROFILES", tmp_path / "profiles")
-    monkeypatch.setattr("refetch.paths.LOGS", tmp_path / "logs")
-    monkeypatch.setattr("refetch.content.DUMPS", tmp_path / "dumps")
-    monkeypatch.setattr("refetch.auth.PROFILES", tmp_path / "profiles")
+    monkeypatch.setattr("lightcrawl.paths.ROOT", tmp_path)
+    monkeypatch.setattr("lightcrawl.paths.DUMPS", tmp_path / "dumps")
+    monkeypatch.setattr("lightcrawl.paths.PROFILES", tmp_path / "profiles")
+    monkeypatch.setattr("lightcrawl.paths.LOGS", tmp_path / "logs")
+    monkeypatch.setattr("lightcrawl.content.DUMPS", tmp_path / "dumps")
+    monkeypatch.setattr("lightcrawl.auth.PROFILES", tmp_path / "profiles")
     (tmp_path / "dumps").mkdir(parents=True)
     (tmp_path / "profiles").mkdir(parents=True)
 
@@ -77,8 +77,8 @@ async def test_mobile_routes_to_safari_impersonate_on_l1(router):
         seen["impersonate"] = impersonate
         return _ok()
 
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_http.fetch", side_effect=fake_fetch):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_http.fetch", side_effect=fake_fetch):
         await router.fetch(FetchRequest(url="https://example.com/", mobile=True))
     assert seen["impersonate"] == fh_mod.MOBILE_IMPERSONATE
     assert "ios" in seen["impersonate"].lower()  # sanity check the constant
@@ -93,8 +93,8 @@ async def test_default_mobile_false_uses_desktop_impersonate(router):
         seen["impersonate"] = impersonate
         return _ok()
 
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_http.fetch", side_effect=fake_fetch):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_http.fetch", side_effect=fake_fetch):
         await router.fetch(FetchRequest(url="https://example.com/"))
     assert seen["impersonate"] == fh_mod.DEFAULT_IMPERSONATE
     assert seen["impersonate"] == "chrome120"
@@ -399,8 +399,8 @@ def test_drop_base64_images_helper_two_pass():
 async def test_default_call_response_unchanged_after_pr1b(router):
     """Default `fetch_url`/CLI call must produce a response with the
     v0.1/PR1a top-level key set even with PR 1b's new fields merged."""
-    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
-         patch("refetch.fetch_http.fetch", return_value=_ok()):
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_http.fetch", return_value=_ok()):
         out = await router.fetch(FetchRequest(url="https://example.com/"))
 
     expected_keys = {

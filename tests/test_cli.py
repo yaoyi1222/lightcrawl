@@ -7,17 +7,17 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from refetch import cli
+from lightcrawl import cli
 
 
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path, monkeypatch):
     # All CLI commands call ensure_dirs() and may write profiles/dumps.
-    monkeypatch.setattr("refetch.paths.ROOT", tmp_path)
-    monkeypatch.setattr("refetch.paths.DUMPS", tmp_path / "dumps")
-    monkeypatch.setattr("refetch.paths.PROFILES", tmp_path / "profiles")
-    monkeypatch.setattr("refetch.paths.LOGS", tmp_path / "logs")
-    monkeypatch.setattr("refetch.auth.PROFILES", tmp_path / "profiles")
+    monkeypatch.setattr("lightcrawl.paths.ROOT", tmp_path)
+    monkeypatch.setattr("lightcrawl.paths.DUMPS", tmp_path / "dumps")
+    monkeypatch.setattr("lightcrawl.paths.PROFILES", tmp_path / "profiles")
+    monkeypatch.setattr("lightcrawl.paths.LOGS", tmp_path / "logs")
+    monkeypatch.setattr("lightcrawl.auth.PROFILES", tmp_path / "profiles")
 
 
 def _run(argv: list[str]) -> tuple[int, dict]:
@@ -61,7 +61,7 @@ def test_fetch_ok_exits_zero():
         "attempts": [],
         "headings": [],
     })
-    with patch("refetch.cli.Router") as RouterCls:
+    with patch("lightcrawl.cli.Router") as RouterCls:
         RouterCls.return_value.fetch = fake
         RouterCls.return_value.close = AsyncMock()
         rc, out = _run(["fetch", "https://example.com/"])
@@ -79,7 +79,7 @@ def test_fetch_failure_exits_one():
         "attempts": [],
         "suggestions": [],
     })
-    with patch("refetch.cli.Router") as RouterCls:
+    with patch("lightcrawl.cli.Router") as RouterCls:
         RouterCls.return_value.fetch = fake
         RouterCls.return_value.close = AsyncMock()
         rc, out = _run(["fetch", "https://blocked.example/"])
@@ -97,7 +97,7 @@ def test_fetch_closes_router_even_on_failure():
     async def boom(*_a, **_kw):
         raise RuntimeError("explode")
 
-    with patch("refetch.cli.Router") as RouterCls:
+    with patch("lightcrawl.cli.Router") as RouterCls:
         RouterCls.return_value.fetch = boom
         RouterCls.return_value.close = close_mock
         rc, out = _run(["fetch", "https://example.com/"])
@@ -117,7 +117,7 @@ def test_fetch_passes_wait_for_selector_through():
                 "content_truncated": False, "dump_path": None,
                 "metadata": {}, "attempts": [], "headings": []}
 
-    with patch("refetch.cli.Router") as RouterCls:
+    with patch("lightcrawl.cli.Router") as RouterCls:
         RouterCls.return_value.fetch = capture
         RouterCls.return_value.close = AsyncMock()
         rc, _ = _run([
@@ -145,7 +145,7 @@ def test_search_passes_args_through():
             "metadata": {"elapsed_ms": 1, "estimated_cost_usd": 0, "result_count": 0},
         }
 
-    with patch("refetch.cli.SearchService") as SvcCls:
+    with patch("lightcrawl.cli.SearchService") as SvcCls:
         SvcCls.return_value.search = capture_search
         SvcCls.return_value.close = AsyncMock()
         rc, out = _run([
@@ -176,7 +176,7 @@ def test_search_failure_exits_one():
             "suggestions": [],
         }
 
-    with patch("refetch.cli.SearchService") as SvcCls:
+    with patch("lightcrawl.cli.SearchService") as SvcCls:
         SvcCls.return_value.search = fail_search
         SvcCls.return_value.close = AsyncMock()
         rc, out = _run(["search", "x"])
@@ -199,7 +199,7 @@ def test_search_and_read_passes_args_through():
                          "total_tokens_returned": 0},
         }
 
-    with patch("refetch.cli.SearchService") as SvcCls:
+    with patch("lightcrawl.cli.SearchService") as SvcCls:
         SvcCls.return_value.search_and_read = capture
         SvcCls.return_value.close = AsyncMock()
         rc, _ = _run([
@@ -230,7 +230,7 @@ def test_auth_list_empty_has_ok_envelope():
 def test_auth_show_wraps_single_profile_in_profiles_array():
     """`auth show <name>` must return the same shape as `auth list` —
     `{ok: true, profiles: [meta]}` — not a bare meta dict."""
-    from refetch import auth as auth_mod
+    from lightcrawl import auth as auth_mod
     auth_mod.save_profile("twitter", {"cookies": [], "origins": []}, "x.com")
 
     rc, out = _run(["auth", "show", "twitter"])
@@ -260,7 +260,7 @@ def test_unexpected_exception_converted_to_json_envelope():
     async def boom(*_a, **_kw):
         raise RuntimeError("kaboom")
 
-    with patch("refetch.cli.Router") as RouterCls:
+    with patch("lightcrawl.cli.Router") as RouterCls:
         RouterCls.return_value.fetch = boom
         RouterCls.return_value.close = AsyncMock()
         rc, out = _run(["fetch", "https://example.com/"])
@@ -275,7 +275,7 @@ def test_list_backends_calls_close_for_cleanup_uniformity():
     other subcommands so SearchService.close() always runs, even if
     a future change makes the service hold a resource."""
     close_mock = AsyncMock()
-    with patch("refetch.cli.SearchService") as SvcCls:
+    with patch("lightcrawl.cli.SearchService") as SvcCls:
         SvcCls.return_value.list_backends = lambda: []
         SvcCls.return_value.close = close_mock
         rc, _ = _run(["list-backends"])
