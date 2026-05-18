@@ -72,6 +72,11 @@ class BrowserResult:
     text: str
     content_type: str
     elapsed_ms: int
+    # PR 2: PNG bytes when fetch() is invoked with screenshot=True. None
+    # otherwise. Bytes (not base64 / not a path) so the router can decide
+    # where to write — keeps fetch_browser.fetch agnostic to filesystem
+    # layout / paths.SCREENSHOTS and the {sha1(url)}.png naming convention.
+    screenshot_png: bytes | None = None
 
 
 class BrowserPool:
@@ -151,6 +156,7 @@ async def fetch(
     storage_state: str | dict | None = None,
     headers: dict[str, str] | None = None,
     mobile: bool = False,
+    screenshot: bool = False,
 ) -> BrowserResult:
     """L2 fetch via Playwright with stealth always enabled."""
     wait_for = wait_for or WaitFor()
@@ -159,6 +165,8 @@ async def fetch(
     extra_ctx_kwargs: dict = {}
     if mobile:
         extra_ctx_kwargs = await pool.mobile_context_kwargs()
+
+    png_bytes: bytes | None = None  # populated below if screenshot=True
 
     async with pool.context(storage_state=storage_state, **extra_ctx_kwargs) as ctx:
         stealth = _STEALTH_MOBILE if mobile else _STEALTH
@@ -220,6 +228,17 @@ async def fetch(
                     ctype = response.headers.get("content-type", "")
                 except Exception:
                     ctype = ""
+
+            # PR 2: capture the PNG inside the page lifetime so the
+            # screenshot reflects the same DOM state we just serialised.
+            # full_page=True so the whole scrollable area shows up; PNG
+            # over JPEG for lossless text rendering. The bytes go on the
+            # BrowserResult — the router decides where to write them.
+            if screenshot:
+                try:
+                    png_bytes = await page.screenshot(full_page=True, type="png")
+                except PWTimeout as e:
+                    raise FetchError(ErrorCode.TIMEOUT, f"screenshot: {e}") from e
         except PWTimeout as e:
             raise FetchError(ErrorCode.TIMEOUT, str(e)) from e
         except Exception as e:
@@ -253,4 +272,5 @@ async def fetch(
         text=html,
         content_type=ctype,
         elapsed_ms=int((time.monotonic() - started) * 1000),
+        screenshot_png=png_bytes,
     )

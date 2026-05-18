@@ -253,8 +253,13 @@ def _add_fetch_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--output-format",
         dest="output_format",
-        choices=["markdown", "html", "text"],
+        choices=["markdown", "html", "text", "screenshot", "markdown+screenshot"],
         default="markdown",
+        help=(
+            "Body format. `screenshot` returns an empty text body and a PNG "
+            "path under `screenshots[]`; `markdown+screenshot` returns both. "
+            "Screenshot formats force L2 (Playwright) — L1 can't render."
+        ),
     )
     p.add_argument("--selector", help="CSS selector to scope content extraction")
     p.add_argument(
