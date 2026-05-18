@@ -56,6 +56,9 @@ class FetchRequest:
     # Default False preserves byte-identical v0.1 responses. v0.3 plans
     # to flip the default to True with a README announcement.
     remove_base64_images: bool = False
+    # v0.2 PR 5 — declarative browser actions. Non-empty forces L2 (browser).
+    # Parse from JSON dicts via actions.parse_actions() before setting.
+    actions: list = field(default_factory=list)
 
 
 def _now_iso() -> str:
@@ -215,12 +218,14 @@ _SCREENSHOT_FORMATS = frozenset({"screenshot", "markdown+screenshot"})
 
 def _l1_incapable(req: FetchRequest) -> bool:
     """True when the request asks for something the L1 (curl_cffi) layer
-    physically cannot produce — currently screenshots; PR 5 will add
-    `actions`, v0.3 will add `block_ads`. Callers MUST run this AFTER
+    physically cannot produce. Callers MUST run this AFTER
     `_looks_like_binary_url(req.url)` and `validate_url(req.url)` so the
     SSRF / binary-content guards are not bypassed by the presence of an
     L2-only field."""
-    return req.output_format in _SCREENSHOT_FORMATS
+    # PR 2: screenshot output formats require Playwright rendering
+    # PR 5: declarative actions require Playwright DOM interaction
+    # v0.3: `block_ads` will also require L2
+    return req.output_format in _SCREENSHOT_FORMATS or bool(req.actions)
 
 
 def _should_escalate_to_browser(http_status: int, html: str) -> bool:
@@ -289,6 +294,14 @@ class Router:
 
         # Forced strategies
         if req.strategy == "http":
+            if req.actions:
+                return _failure(
+                    req.url,
+                    ErrorCode.UNSUPPORTED_CONTENT_TYPE,
+                    "actions require a browser; incompatible with --strategy http. "
+                    "Remove --strategy http or drop --actions.",
+                    attempts,
+                )
             return await self._fetch_http_only(req, attempts)
         if req.strategy == "browser":
             return await self._fetch_browser_only(req, attempts, storage_state=None)
@@ -384,6 +397,7 @@ class Router:
                     headers=req.headers or None,
                     mobile=req.mobile,
                     screenshot=req.output_format in _SCREENSHOT_FORMATS,
+                    actions=req.actions,
                 ),
                 timeout=req.timeout_ms / 1000.0,
             )
@@ -603,13 +617,26 @@ def _success_from_browser(
         "headings": [{"level": h.level, "text": h.text, "line": h.line} for h in extracted.headings],
     }
     # PR 2: surface screenshots only when present, keeping the v0.1 / PR 1a
-    # / PR 1b default-call key set byte-identical. PR 5 will extend this
-    # same array with intermediate `{stage: "action", index, label, path}`
+    # / PR 1b default-call key set byte-identical. PR 5 extends this same
+    # array with intermediate `{stage: "action", index, label, path}`
     # entries — that's why it's a list of objects, not a flat path string.
+    shots: list[dict] = []
+    # PR 5: intermediate screenshots come first, in action-execution order.
+    if r.action_screenshots:
+        for shot in r.action_screenshots:
+            path = _write_action_screenshot(req.url, shot["index"], shot["png_bytes"])
+            shots.append({
+                "stage": "action",
+                "index": shot["index"],
+                "label": shot["label"],
+                "path": path,
+            })
     if r.screenshot_png is not None:
-        result["screenshots"] = [
-            {"stage": "final", "path": _write_screenshot(req.url, r.screenshot_png)}
-        ]
+        shots.append({
+            "stage": "final", "path": _write_screenshot(req.url, r.screenshot_png)
+        })
+    if shots:
+        result["screenshots"] = shots
     return result
 
 
@@ -644,6 +671,19 @@ def _write_screenshot(url: str, png: bytes) -> str:
     SCREENSHOTS.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha1(url.encode("utf-8")).hexdigest()[:16]
     path = SCREENSHOTS / f"{digest}.png"
+    path.write_bytes(png)
+    return str(path)
+
+
+def _write_action_screenshot(url: str, index: int, png: bytes) -> str:
+    """Persist an intermediate ScreenshotAction PNG.
+    Naming: SCREENSHOTS/{sha1(url)[:16]}_act{index}.png
+    Index is the action's position in the `actions` list — gaps mean
+    non-screenshot actions occupy that slot."""
+    from .paths import SCREENSHOTS
+    SCREENSHOTS.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha1(url.encode("utf-8")).hexdigest()[:16]
+    path = SCREENSHOTS / f"{digest}_act{index}.png"
     path.write_bytes(png)
     return str(path)
 

@@ -212,12 +212,12 @@ async def test_markdown_plus_screenshot_returns_both(router, tmp_path, monkeypat
 
 async def test_binary_url_rejected_even_with_screenshot_format(router):
     """The call-order constraint in `_l1_incapable`'s docstring: it MUST run
-    AFTER `_looks_like_binary_url`. Otherwise a .pdf URL with
+    AFTER `_looks_like_binary_url`. Otherwise a .zip URL with
     output_format=screenshot would skip the binary guard and try to take a
     screenshot of a downloadable file (Playwright errors are uglier than
-    our `UNSUPPORTED_CONTENT_TYPE`)."""
+    our `UNSUPPORTED_CONTENT_TYPE`). .pdf no longer binary since PR 4."""
     out = await router.fetch(
-        FetchRequest(url="https://example.com/file.pdf", output_format="screenshot")
+        FetchRequest(url="https://example.com/file.zip", output_format="screenshot")
     )
     assert out["ok"] is False
     assert out["error_code"] == ErrorCode.UNSUPPORTED_CONTENT_TYPE.value

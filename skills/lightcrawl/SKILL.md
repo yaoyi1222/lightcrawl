@@ -12,7 +12,7 @@ JSON yourself (use `jq` when you only need one field).
 ## Commands
 
 Fetch:
-- `lightcrawl fetch <url> [--strategy ...] [--profile ...] [--output-format ...] [--selector ...] [--wait-for-selector ...] [--max-inline-tokens ...] [--timeout-ms ...]`
+- `lightcrawl fetch <url> [--strategy ...] [--profile ...] [--output-format ...] [--selector ...] [--wait-for-selector ...] [--max-inline-tokens ...] [--timeout-ms ...] [--actions JSON_OR_@FILE]`
 
 Search:
 - `lightcrawl search <query> [--depth quick|normal|deep] [--backend ...] [--max-results N] [--time-range-after YYYY-MM-DD] [--time-range-before YYYY-MM-DD] [--profile ...] [--timeout-ms N]`
@@ -72,6 +72,35 @@ All commands print one JSON object on stdout. Useful patterns from the Bash tool
 | `--wait-for-selector` | The page loads content dynamically after initial HTML (SPAs). |
 | `--wait-for-network-idle` | The page makes many async requests; wait for them to settle. |
 | `--max-inline-tokens` | Increase for deep-dive reads; decrease to save tokens on partial reads. |
+| `--actions '[...]'` | Execute browser actions after page load: click, write, press, wait, scroll, screenshot. Forces L2. JSON or `@file.json`. |
+
+### Browser actions (PR 5)
+
+`--actions` accepts a JSON array (or `@path/to/file.json`). Each entry has `{"type": "...", ...}`:
+
+| Type | Fields | Description |
+|------|--------|-------------|
+| `click` | `selector`, `timeout_ms` (default 5000) | Click an element |
+| `write` | `selector`, `text` | Type text into an input field |
+| `press` | `key` | Press a keyboard key (Enter, Tab, Escape, ArrowDown, ...) |
+| `wait` | `milliseconds` | Pause execution |
+| `scroll` | `pixels` (default 800), `direction` (default "down") | Scroll the page |
+| `screenshot` | `label` (optional) | Capture an intermediate screenshot |
+
+Example:
+```bash
+lightcrawl fetch https://example.com --actions '[
+  {"type":"click","selector":"#login-btn"},
+  {"type":"wait","milliseconds":1000},
+  {"type":"screenshot","label":"after-login-click"},
+  {"type":"write","selector":"#email","text":"user@test.com"},
+  {"type":"write","selector":"#pass","text":"s3cret"},
+  {"type":"click","selector":"#submit"},
+  {"type":"screenshot","label":"after-submit"}
+]'
+```
+
+**Index semantics:** Intermediate screenshots are saved as `{sha1(url)[:16]}_act{i}.png` where `i` is the zero-based index in the `actions` array. Gaps are expected — non-screenshot actions consume index slots without producing a file. The response's `screenshots[]` array carries `{"stage":"action","index":i,"label":"...","path":"..."}` entries. Final screenshot (from `--output-format screenshot`) carries `{"stage":"final","path":"..."}`.
 
 ### Failure handling
 

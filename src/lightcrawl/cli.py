@@ -61,6 +61,28 @@ def _parse_headers(raw: list[str] | None) -> dict[str, str]:
     return out
 
 
+def _parse_actions(raw: str | None) -> list:
+    """Parse `--actions` value: JSON string or `@filepath` to a JSON file."""
+    import json as _json
+    from .actions import parse_actions as _parse
+
+    if not raw:
+        return []
+    raw = raw.strip()
+    if raw.startswith("@"):
+        path = raw[1:]
+        try:
+            with open(path, "r") as f:
+                raw = f.read()
+        except OSError as e:
+            raise ValueError(f"cannot read actions file {path!r}: {e}") from e
+    try:
+        items = _json.loads(raw)
+    except _json.JSONDecodeError as e:
+        raise ValueError(f"--actions JSON is invalid: {e}") from e
+    return _parse(items)
+
+
 def _print(obj) -> None:
     print(json.dumps(obj, ensure_ascii=False, indent=2))
 
@@ -147,6 +169,12 @@ async def _run_fetch(args: argparse.Namespace) -> int:
             network_idle=args.wait_for_network_idle,
             timeout_ms=args.wait_for_timeout_ms,
         )
+    # PR 5: parse declarative actions from JSON or @file
+    raw_actions = getattr(args, "actions", None)
+    parsed_actions: list = []
+    if raw_actions:
+        parsed_actions = _parse_actions(raw_actions)
+
     req = FetchRequest(
         url=args.url,
         strategy=args.strategy,
@@ -161,6 +189,7 @@ async def _run_fetch(args: argparse.Namespace) -> int:
         exclude_tags=_clean_tags(getattr(args, "exclude_tags", None)),
         mobile=bool(getattr(args, "mobile", False)),
         remove_base64_images=bool(getattr(args, "remove_base64_images", False)),
+        actions=parsed_actions,
     )
     router = Router()
     try:
@@ -345,6 +374,18 @@ def _add_fetch_parser(sub: argparse._SubParsersAction) -> None:
             "Drop <img> elements whose src is a data: URI before extraction. "
             "Non-base64 images then survive into markdown (default behavior "
             "strips all <img>). v0.3 plans to make this the default."
+        ),
+    )
+    p.add_argument(
+        "--actions",
+        dest="actions",
+        metavar="JSON_OR_@FILE",
+        help=(
+            "Declarative browser actions as a JSON array, or @path to a JSON "
+            "file. Actions run after page load and before content extraction. "
+            "Supported types: click, write, press, wait, scroll, screenshot. "
+            'Example: \'[{"type":"click","selector":"#btn"},{"type":"screenshot"'
+            ',"label":"post-click"}]\'. Non-empty actions force L2 (browser).'
         ),
     )
     p.set_defaults(func=_cmd_fetch)
