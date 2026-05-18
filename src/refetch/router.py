@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Literal
@@ -34,7 +35,9 @@ class FetchRequest:
     url: str
     strategy: Strategy = "auto"
     profile: str | None = None
-    output_format: Literal["markdown", "html", "text"] = "markdown"
+    output_format: Literal[
+        "markdown", "html", "text", "screenshot", "markdown+screenshot"
+    ] = "markdown"
     selector: str | None = None
     wait_for: WaitForArg | None = None
     max_inline_tokens: int = 8000
@@ -194,6 +197,23 @@ def _looks_like_challenge(text: str) -> bool:
 
 # -- escalation heuristic (PR-3) ---------------------------------------------------
 
+# Output formats that physically require the L2 browser. Centralised so a
+# future feature that needs Playwright (`block_ads`, `actions`, …) just
+# adds itself to `_l1_incapable` rather than scattering early-bypass
+# branches through `Router.fetch`.
+_SCREENSHOT_FORMATS = frozenset({"screenshot", "markdown+screenshot"})
+
+
+def _l1_incapable(req: FetchRequest) -> bool:
+    """True when the request asks for something the L1 (curl_cffi) layer
+    physically cannot produce — currently screenshots; PR 5 will add
+    `actions`, v0.3 will add `block_ads`. Callers MUST run this AFTER
+    `_looks_like_binary_url(req.url)` and `validate_url(req.url)` so the
+    SSRF / binary-content guards are not bypassed by the presence of an
+    L2-only field."""
+    return req.output_format in _SCREENSHOT_FORMATS
+
+
 def _should_escalate_to_browser(http_status: int, html: str) -> bool:
     if http_status in (403, 429, 503):
         return True
@@ -243,6 +263,15 @@ class Router:
         # L3 path: explicit profile
         if req.profile or req.strategy == "authed":
             return await self._fetch_authed(req, resolved.etld1, attempts)
+
+        # PR 2: physical L1 incapability (screenshot today; actions / block_ads
+        # later). Must come AFTER `_looks_like_binary_url` + `validate_url`
+        # above — SSRF and binary guards are unconditional. Honour an
+        # explicit `strategy="http"` request as a deliberate override that
+        # surfaces as a downstream UNSUPPORTED_CONTENT_TYPE / empty-screenshot
+        # response rather than silently re-routing to L2.
+        if _l1_incapable(req) and req.strategy != "http":
+            return await self._fetch_browser_only(req, attempts, storage_state=None)
 
         # Forced strategies
         if req.strategy == "http":
@@ -340,6 +369,7 @@ class Router:
                     storage_state=storage_state,
                     headers=req.headers or None,
                     mobile=req.mobile,
+                    screenshot=req.output_format in _SCREENSHOT_FORMATS,
                 ),
                 timeout=req.timeout_ms / 1000.0,
             )
@@ -485,7 +515,7 @@ def _success_from_browser(
 ) -> dict:
     body = _format_body(req.output_format, extracted, r.text)
     inline, truncated, dump_path = content_mod.maybe_dump(req.url, body, req.max_inline_tokens)
-    return {
+    result: dict = {
         "ok": True,
         "url": req.url,
         "final_url": r.final_url,
@@ -506,6 +536,15 @@ def _success_from_browser(
         "attempts": [a.to_dict() for a in attempts],
         "headings": [{"level": h.level, "text": h.text, "line": h.line} for h in extracted.headings],
     }
+    # PR 2: surface screenshots only when present, keeping the v0.1 / PR 1a
+    # / PR 1b default-call key set byte-identical. PR 5 will extend this
+    # same array with intermediate `{stage: "action", index, label, path}`
+    # entries — that's why it's a list of objects, not a flat path string.
+    if r.screenshot_png is not None:
+        result["screenshots"] = [
+            {"stage": "final", "path": _write_screenshot(req.url, r.screenshot_png)}
+        ]
+    return result
 
 
 def _format_body(fmt: str, extracted: content_mod.ExtractedContent, raw_html: str) -> str:
@@ -513,7 +552,30 @@ def _format_body(fmt: str, extracted: content_mod.ExtractedContent, raw_html: st
         return raw_html
     if fmt == "text":
         return extracted.plain_text
+    if fmt == "screenshot":
+        # PR 2: caller asked for the PNG only. The image bytes go in the
+        # `screenshots` array, the text body is intentionally empty.
+        return ""
+    # "markdown" or "markdown+screenshot" — both yield markdown text
     return extracted.markdown
+
+
+def _write_screenshot(url: str, png: bytes) -> str:
+    """Persist a screenshot under `~/.refetch/screenshots/{sha1(url)}.png`
+    and return its absolute path.
+
+    Overwrite semantics — same URL re-screenshotted clobbers the prior
+    file. PR 2 doesn't ship GC; that's deferred to v0.3's cache layer
+    which will fold this directory into the same TTL/LRU policy as the
+    markdown cache. Until then SKILL.md / README must document
+    "two fetches of the same URL clobber each other's screenshot."
+    """
+    from .paths import SCREENSHOTS
+    SCREENSHOTS.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha1(url.encode("utf-8")).hexdigest()[:16]
+    path = SCREENSHOTS / f"{digest}.png"
+    path.write_bytes(png)
+    return str(path)
 
 
 def _failure(
