@@ -816,11 +816,11 @@ _LINKS_IMAGES_HTML = """
 def test_html_to_markdown_populates_links():
     out = html_to_markdown(_LINKS_IMAGES_HTML, url="https://example.com/")
     assert len(out.links) == 2
-    urls = {l["url"] for l in out.links}
+    urls = {link["url"] for link in out.links}
     assert "https://example.com/about" in urls
     assert "https://other.com/" in urls
     # mailto: is skipped
-    assert not any("mailto" in l["url"] for l in out.links)
+    assert not any("mailto" in link["url"] for link in out.links)
 
 
 def test_html_to_markdown_populates_images():

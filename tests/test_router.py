@@ -236,7 +236,9 @@ async def test_gather_with_exception_isolation():
 
 
 def test_looks_like_binary_url_pdf():
-    assert _looks_like_binary_url("https://arxiv.org/pdf/2301.07041.pdf") is True
+    """PR 4: .pdf is no longer in _BINARY_EXTS — PDFs are handled by fetch_pdf.
+    The lookup helper must not reject them."""
+    assert _looks_like_binary_url("https://arxiv.org/pdf/2301.07041.pdf") is False
 
 
 def test_looks_like_binary_url_archive_and_image():
@@ -249,12 +251,12 @@ def test_looks_like_binary_url_html_pages_pass():
     assert _looks_like_binary_url("https://example.com/foo.html") is False
 
 
-def test_looks_like_binary_url_pdf_with_signed_query_still_rejected():
-    """Signed S3-style PDFs add query params for auth; the path is still a PDF
-    so we keep rejecting (fetch would only return binary bytes either way)."""
+def test_looks_like_binary_url_pdf_with_signed_query_still_detected_as_pdf():
+    """PR 4: .pdf with signed query is no longer rejected as binary. It is
+    detected as a PDF and dispatched to fetch_pdf."""
     assert _looks_like_binary_url(
         "https://example.com/doc.pdf?Signature=abc&Expires=99"
-    ) is True
+    ) is False
 
 
 def test_looks_like_binary_url_query_with_pdf_token_not_rejected():
@@ -285,13 +287,30 @@ def test_default_user_agent_matches_host_os(monkeypatch):
     assert "Mac OS X" in ua
 
 
-async def test_pdf_url_returns_unsupported_content_type(router):
-    """PDF URL should be rejected before any network call (no attempts)."""
-    out = await router.fetch(FetchRequest(url="https://arxiv.org/pdf/2301.07041.pdf"))
-    assert out["ok"] is False
-    assert out["error_code"] == ErrorCode.UNSUPPORTED_CONTENT_TYPE.value
-    assert out["attempts"] == []  # never went to the network
-    assert any("download" in s.lower() or "curl" in s.lower() for s in out["suggestions"])
+async def test_pdf_url_is_dispatched_to_fetch_pdf(router):
+    """PR 4: .pdf URLs are no longer rejected — they route to fetch_pdf.
+    Non-.pdf binaries (e.g. .zip) are still rejected."""
+    from refetch.fetch_pdf import PdfResult
+
+    def fake_fetch_pdf(url, *, timeout, headers=None):
+        return PdfResult(
+            markdown="PDF content",
+            num_pages=3,
+            content_length=12345,
+            final_url=url,
+            elapsed_ms=100,
+        )
+
+    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("refetch.fetch_pdf.fetch_pdf", side_effect=fake_fetch_pdf):
+        out = await router.fetch(FetchRequest(url="https://arxiv.org/pdf/2301.07041.pdf"))
+
+    assert out["ok"] is True
+    assert out["strategy_used"] == "pdf"
+    assert out["content"] == "PDF content"
+    assert out["metadata"]["num_pages"] == 3
+    assert out["metadata"]["content_length"] == 12345
+    assert out["metadata"]["content_type"] == "application/pdf"
 
 
 # -- Bug 10: failure response schema parity ---------------------------------

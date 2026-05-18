@@ -1,0 +1,259 @@
+"""PR 4 — PDF parsing via pypdf (L1-only, no L2 fallback).
+
+Offline tests cover:
+  - Successful 2-page PDF extraction with page separator
+  - Scanned PDF (no text layer) → PDF_NO_TEXT_LAYER
+  - Non-PDF response → UNSUPPORTED_CONTENT_TYPE
+  - Magic-bytes fallback when Content-Type is missing
+  - PDF_FETCH_BLOCKED on curl_cffi error
+  - Router integration: .pdf dispatch, non-.pdf binaries still rejected
+"""
+
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from refetch.errors import ErrorCode, FetchError
+from refetch.fetch_http import HttpResult
+from refetch.fetch_pdf import PdfResult, fetch_pdf
+from refetch.router import FetchRequest, Router
+
+
+@pytest.fixture
+def router():
+    r = Router()
+    yield r
+
+
+@pytest.fixture(autouse=True)
+def _isolate_paths(tmp_path, monkeypatch):
+    monkeypatch.setattr("refetch.paths.ROOT", tmp_path)
+    monkeypatch.setattr("refetch.paths.DUMPS", tmp_path / "dumps")
+    monkeypatch.setattr("refetch.paths.PROFILES", tmp_path / "profiles")
+    monkeypatch.setattr("refetch.paths.LOGS", tmp_path / "logs")
+    monkeypatch.setattr("refetch.content.DUMPS", tmp_path / "dumps")
+    monkeypatch.setattr("refetch.auth.PROFILES", tmp_path / "profiles")
+    (tmp_path / "dumps").mkdir(parents=True)
+    (tmp_path / "profiles").mkdir(parents=True)
+
+
+_FAKE_PDF_BYTES = b"%PDF-1.4\n%fake pdf content\n%%EOF"
+
+
+def _fake_curl_response(content=None, content_type="application/pdf", url="https://example.com/doc.pdf"):
+    """Build a mock curl_cffi response object."""
+    if content is None:
+        content = _FAKE_PDF_BYTES
+    r = MagicMock()
+    r.content = content
+    r.url = url
+    r.headers = {"content-type": content_type}
+    return r
+
+
+# ══ fetch_pdf unit tests ══
+
+
+def test_fetch_pdf_two_pages(monkeypatch):
+    """2-page PDF → markdown with \n\n---\n\n separator."""
+    mock_reader = MagicMock()
+    page1 = MagicMock()
+    page1.extract_text.return_value = "Page One Content"
+    page2 = MagicMock()
+    page2.extract_text.return_value = "Page Two Content"
+    mock_reader.pages = [page1, page2]
+
+    monkeypatch.setattr("refetch.fetch_pdf.ccr.get",
+                        lambda *a, **kw: _fake_curl_response())
+    monkeypatch.setattr("pypdf.PdfReader",
+                        lambda *a, **kw: mock_reader)
+
+    result = fetch_pdf("https://example.com/doc.pdf")
+    assert result.num_pages == 2
+    assert result.content_length == len(_FAKE_PDF_BYTES)
+    assert result.markdown == "Page One Content\n\n---\n\nPage Two Content"
+
+
+def test_fetch_pdf_no_text_layer(monkeypatch):
+    """Blank pages (no extractable text) → PDF_NO_TEXT_LAYER."""
+    mock_reader = MagicMock()
+    page1 = MagicMock()
+    page1.extract_text.return_value = ""
+    page2 = MagicMock()
+    page2.extract_text.return_value = "   "  # whitespace-only → stripped
+    mock_reader.pages = [page1, page2]
+
+    monkeypatch.setattr("refetch.fetch_pdf.ccr.get",
+                        lambda *a, **kw: _fake_curl_response())
+    monkeypatch.setattr("pypdf.PdfReader",
+                        lambda *a, **kw: mock_reader)
+
+    with pytest.raises(FetchError) as exc:
+        fetch_pdf("https://example.com/scan.pdf")
+    assert exc.value.code == ErrorCode.PDF_NO_TEXT_LAYER
+
+
+def test_fetch_pdf_rejects_non_pdf_content_type(monkeypatch):
+    """text/html Content-Type + no %PDF magic → UNSUPPORTED_CONTENT_TYPE."""
+    monkeypatch.setattr("refetch.fetch_pdf.ccr.get",
+                        lambda *a, **kw: _fake_curl_response(
+                            content=b"<html>not a pdf</html>",
+                            content_type="text/html",
+                        ))
+
+    with pytest.raises(FetchError) as exc:
+        fetch_pdf("https://example.com/fake.pdf")
+    assert exc.value.code == ErrorCode.UNSUPPORTED_CONTENT_TYPE
+
+
+def test_fetch_pdf_accepts_magic_bytes_without_content_type(monkeypatch):
+    """No Content-Type header but body starts with %PDF → accept."""
+    mock_reader = MagicMock()
+    mock_reader.pages = [MagicMock()]
+    mock_reader.pages[0].extract_text.return_value = "Valid PDF"
+
+    monkeypatch.setattr("refetch.fetch_pdf.ccr.get",
+                        lambda *a, **kw: _fake_curl_response(content_type=""))
+    monkeypatch.setattr("pypdf.PdfReader",
+                        lambda *a, **kw: mock_reader)
+
+    result = fetch_pdf("https://example.com/doc.pdf")
+    assert result.num_pages == 1
+
+
+def test_fetch_pdf_timeout_maps_to_fetch_error(monkeypatch):
+    """curl_cffi timeout → ErrorCode.TIMEOUT."""
+    import curl_cffi
+
+    def raise_timeout(*a, **kw):
+        raise curl_cffi.requests.errors.RequestsError("Connection timed out")
+
+    monkeypatch.setattr("refetch.fetch_pdf.ccr.get", raise_timeout)
+    with pytest.raises(FetchError) as exc:
+        fetch_pdf("https://example.com/doc.pdf")
+    assert exc.value.code == ErrorCode.TIMEOUT
+
+
+def test_fetch_pdf_other_curl_error_maps_to_pdf_fetch_blocked(monkeypatch):
+    """Non-timeout curl_cffi errors → PDF_FETCH_BLOCKED."""
+    import curl_cffi
+
+    def raise_ssl(*a, **kw):
+        raise curl_cffi.requests.errors.RequestsError("SSL handshake failed")
+
+    monkeypatch.setattr("refetch.fetch_pdf.ccr.get", raise_ssl)
+    with pytest.raises(FetchError) as exc:
+        fetch_pdf("https://example.com/doc.pdf")
+    assert exc.value.code == ErrorCode.PDF_FETCH_BLOCKED
+
+
+def test_fetch_pdf_content_too_large(monkeypatch):
+    """Response > 50MB → CONTENT_TOO_LARGE."""
+    monkeypatch.setattr("refetch.fetch_pdf.ccr.get",
+                        lambda *a, **kw: _fake_curl_response(
+                            content=b"x" * (50 * 1024 * 1024 + 1),
+                        ))
+
+    with pytest.raises(FetchError) as exc:
+        fetch_pdf("https://example.com/huge.pdf")
+    assert exc.value.code == ErrorCode.CONTENT_TOO_LARGE
+
+
+def test_fetch_pdf_corrupt_pdf_raises(monkeypatch):
+    """pypdf can't open the file → UNSUPPORTED_CONTENT_TYPE."""
+    monkeypatch.setattr("refetch.fetch_pdf.ccr.get",
+                        lambda *a, **kw: _fake_curl_response(
+                            content=b"not a pdf at all",
+                            content_type="application/pdf",
+                        ))
+
+    with pytest.raises(FetchError) as exc:
+        fetch_pdf("https://example.com/corrupt.pdf")
+    assert exc.value.code == ErrorCode.UNSUPPORTED_CONTENT_TYPE
+
+
+# ══ Router integration ══
+
+
+async def test_pdf_router_integration_success(router):
+    """End-to-end through Router: .pdf URL → fetch_pdf → success response."""
+    def fake_fetch_pdf(url, *, timeout, headers=None):
+        return PdfResult(
+            markdown="Page 1\n\n---\n\nPage 2",
+            num_pages=2,
+            content_length=1000,
+            final_url=url,
+            elapsed_ms=42,
+        )
+
+    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("refetch.fetch_pdf.fetch_pdf", side_effect=fake_fetch_pdf):
+        out = await router.fetch(
+            FetchRequest(url="https://example.com/doc.pdf")
+        )
+
+    assert out["ok"] is True
+    assert out["strategy_used"] == "pdf"
+    assert out["content"] == "Page 1\n\n---\n\nPage 2"
+    assert out["metadata"]["num_pages"] == 2
+    assert out["metadata"]["content_length"] == 1000
+    assert out["metadata"]["content_type"] == "application/pdf"
+    assert out["metadata"]["links"] == []
+    assert out["metadata"]["images"] == []
+
+
+async def test_pdf_router_integration_failure(router):
+    """Router surfaces fetch_pdf errors."""
+    def fake_fetch_pdf(*args, **kwargs):
+        raise FetchError(ErrorCode.PDF_NO_TEXT_LAYER, "no text")
+
+    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("refetch.fetch_pdf.fetch_pdf", side_effect=fake_fetch_pdf):
+        out = await router.fetch(
+            FetchRequest(url="https://example.com/scan.pdf")
+        )
+
+    assert out["ok"] is False
+    assert out["error_code"] == ErrorCode.PDF_NO_TEXT_LAYER.value
+
+
+async def test_non_pdf_binaries_still_rejected(router):
+    """PR 4 only removes .pdf from the binary list; .zip still rejected."""
+    out = await router.fetch(FetchRequest(url="https://example.com/archive.zip"))
+    assert out["ok"] is False
+    assert out["error_code"] == ErrorCode.UNSUPPORTED_CONTENT_TYPE.value
+    assert out["attempts"] == []
+
+
+async def test_pdf_query_param_not_treated_as_pdf(router):
+    """.pdf in query string (not path) → normal HTML fetch, not PDF route."""
+    fake = HttpResult(
+        final_url="https://example.com/search?q=foo.pdf",
+        status_code=200,
+        text=(
+            "<html><head><title>Search</title></head><body>"
+            "<article><h1>Results</h1><p>search results text long enough "
+            "to bypass the tiny-body escalation heuristic and produce "
+            "stable output in tests.</p></article></body></html>"
+        ),
+        content_type="text/html",
+        elapsed_ms=5,
+    )
+    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("refetch.fetch_http.fetch", return_value=fake):
+        out = await router.fetch(
+            FetchRequest(url="https://example.com/search?q=foo.pdf")
+        )
+
+    assert out["ok"] is True
+    assert out["strategy_used"] == "http"  # normal HTML, not "pdf"
+
+
+async def test_ssrf_guards_still_apply_to_pdf_urls(router):
+    """PDF dispatch must come AFTER SSRF validation — private IP PDFs blocked."""
+    with patch("refetch.url_safety.socket.gethostbyname", return_value="127.0.0.1"):
+        out = await router.fetch(
+            FetchRequest(url="http://localhost/doc.pdf")
+        )
+    assert out["ok"] is False
+    assert out["error_code"] == ErrorCode.URL_NOT_ALLOWED.value
