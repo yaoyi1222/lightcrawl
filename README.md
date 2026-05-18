@@ -6,8 +6,8 @@
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-146%20passing-brightgreen.svg)](tests/)
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](CONTRIBUTING.md)
+[![Tests](https://img.shields.io/badge/tests-270%20passing-brightgreen.svg)](tests/)
+[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](CONTRIBUTING.md)
 
 [English](README.md) · [中文](README_zh.md) · [CONTRIBUTING](CONTRIBUTING.md)
 
@@ -25,6 +25,12 @@ Lightcrawl is a local CLI plus a one-file skill that upgrades your agent's abili
 - ✅ Multi-backend search — Brave, Serper, Tavily with automatic failover
 - ✅ Token-saving pipeline — auto-scopes to main content, strips 30–90% of noise
 - ✅ One-shot search+read — `lightcrawl search-and-read` finds results and fetches top pages in one call
+- ✅ Links & images extraction — always-on `metadata.links` / `metadata.images`, plus dedicated JSON output formats
+- ✅ PDF parsing — text extraction from PDFs via pypdf, with magic-byte fallback
+- ✅ Screenshots — full-page PNG output, including intermediate action-triggered captures
+- ✅ Declarative browser actions — click, write, press key, wait, scroll, screenshot before content extraction
+- ✅ Mobile emulation — iOS Safari impersonate profile with matching TLS fingerprint
+- ✅ Custom headers + tag filtering — `include_tags`/`exclude_tags` for Firecrawl-style DOM scoping
 
 ---
 

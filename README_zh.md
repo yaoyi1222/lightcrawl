@@ -6,8 +6,8 @@
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-146%20passing-brightgreen.svg)](tests/)
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](CONTRIBUTING.md)
+[![Tests](https://img.shields.io/badge/tests-270%20passing-brightgreen.svg)](tests/)
+[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](CONTRIBUTING.md)
 
 [English](README.md) · [中文](README_zh.md) · [CONTRIBUTING](CONTRIBUTING.md)
 
@@ -25,6 +25,12 @@ Lightcrawl 是一个本地 CLI + 一份 skill 文件，升级 Agent 的网页抓
 - ✅ 多后端搜索 — Brave、Serper、Tavily 自动故障转移
 - ✅ 省 token 管线 — 自动定位到主内容区域，砍掉 30–90% 噪声
 - ✅ 一站式搜索+阅读 — `lightcrawl search-and-read` 一次调用完成搜索与并发抓取
+- ✅ 链接/图片提取 — `metadata.links` / `metadata.images` 始终可用，支持专用 JSON 输出格式
+- ✅ PDF 解析 — pypdf 文本提取，支持 magic-byte 回退检测
+- ✅ 截图输出 — 全页面 PNG，包括动作触发的中间截图
+- ✅ 浏览器动作 — click、write、press key、wait、scroll、screenshot 在抓取前执行
+- ✅ 移动端模拟 — iOS Safari impersonate profile，TLS 指纹同步切换
+- ✅ 自定义 headers + 标签过滤 — `include_tags`/`exclude_tags` Firecrawl 风格 DOM 范围控制
 
 ---
 

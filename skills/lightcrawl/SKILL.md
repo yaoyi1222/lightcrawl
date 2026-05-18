@@ -67,10 +67,19 @@ All commands print one JSON object on stdout. Useful patterns from the Bash tool
 | `--selector` | You know the page structure (e.g. Wikipedia, GitHub README). Cuts tokens. |
 | `--output-format text` | You only need plain text — smaller output than markdown. |
 | `--output-format html` | You need raw HTML for custom parsing. |
+| `--output-format screenshot` | Capture a full-page PNG (forces L2). Content body is empty; path in `screenshots[]`. |
+| `--output-format markdown+screenshot` | Markdown body + PNG screenshot. |
+| `--output-format links` | JSON array of `{url, text, rel}` for every `<a href>`. Links always present under `metadata.links`. |
+| `--output-format images` | JSON array of `{url, alt, width?, height?}` for every `<img>`. Images always present under `metadata.images`. |
 | `--strategy http` | You're sure the page is static HTML — skips browser launch (~1-2s). |
 | `--strategy browser` | You know L1 won't work (SPA, JS-heavy). |
 | `--wait-for-selector` | The page loads content dynamically after initial HTML (SPAs). |
 | `--wait-for-network-idle` | The page makes many async requests; wait for them to settle. |
+| `--include-tag <TAG>` | Include only these HTML tags in extraction (repeatable). Skips auto main/article scoping. |
+| `--exclude-tag <TAG>` | Remove these tags before extraction (repeatable). Stacked on top of built-in script/style strip. |
+| `--header KEY=VAL` | Extra HTTP request header (repeatable). Caller wins on collision with impersonate defaults. |
+| `--mobile` | Emulate iOS Safari on both layers (UA + TLS fingerprint + viewport). |
+| `--remove-base64-images` | Drop data: URI images but keep real images in markdown output. |
 | `--max-inline-tokens` | Increase for deep-dive reads; decrease to save tokens on partial reads. |
 | `--actions '[...]'` | Execute browser actions after page load: click, write, press, wait, scroll, screenshot. Forces L2. JSON or `@file.json`. |
 
@@ -111,7 +120,14 @@ When `ok: false`, the JSON includes an `attempts` array (what was tried) and a `
 | `LOGIN_REQUIRED` | Page needs login | See "Login-required pages" below |
 | `BLOCKED_BY_CLOUDFLARE` | CF Turnstile blocked the fetch | Use the archive URL from `suggestions`. **Do not retry** with different strategies — headless Playwright cannot bypass Turnstile (WebGL/Canvas fingerprint mismatch). The `suggestions` array already contains the best fallback. |
 | `SPA_NAVIGATION_LOOP` | SPA kept navigating, never settled | Check `suggestions` — it may contain a domain hint (e.g. "use old.reddit.com instead"). Try a different URL if available. |
-| `UNSUPPORTED_CONTENT_TYPE` | URL is a binary file (PDF, ZIP, image, etc.) | Check `suggestions` — for arXiv PDFs it suggests the abs HTML page. Otherwise use shell tools (`curl -L -o file`). |
+| `UNSUPPORTED_CONTENT_TYPE` | URL is a binary file (ZIP, image, executable, etc.) | Use shell tools (`curl -L -o file`). `.pdf` URLs are now supported via the PDF pipeline. |
+| `PDF_NO_TEXT_LAYER` | PDF has pages but no extractable text (scanned/image-only) | Print the error; suggest the abs HTML page for arXiv PDFs. |
+| `PDF_FETCH_BLOCKED` | PDF download failed (SSL, DNS, etc.) | Check URL; try archive. |
+| `ACTION_FAILED` | A browser action failed (selector not found, element not visible, etc.) | The `error_detail` includes the action index and type. Adjust selectors or timing. |
+
+### PDF handling
+
+`.pdf` URLs are dispatched to the PDF pipeline (`fetch_pdf.py`). No special flag needed — `lightcrawl fetch https://example.com/doc.pdf` just works. The response includes `strategy_used: "pdf"` and `metadata.num_pages` / `metadata.content_length`. Scanned PDFs (no text layer) return `PDF_NO_TEXT_LAYER`. This is L1-only in v0.2 — Cloudflare-protected PDFs may fail.
 | `JS_TIMEOUT` | Waited-for selector or network idle never happened | Increase `--wait-for-timeout-ms` or use a more specific selector. |
 | `TIMEOUT` | All strategies timed out | Increase `--timeout-ms`; consider whether the site is reachable at all. |
 | `DNS_FAILED` | Hostname doesn't resolve | The domain may not exist or DNS is down — not recoverable. |
@@ -161,7 +177,7 @@ If search exits 0 with empty `results`: that's an honest "no matches". **Don't**
       "content_markdown": "...",
       "content_truncated": true,
       "dump_path": "/path/or/null",
-      "fetch_strategy_used": "http|browser|authed",
+      "fetch_strategy_used": "http|browser|authed|pdf",
       "headings": [{"level": 1, "text": "...", "line": 42}]
     }
   ],
@@ -169,6 +185,10 @@ If search exits 0 with empty `results`: that's an honest "no matches". **Don't**
     {"url": "...", "error_code": "...", "error_detail": "..."}
   ],
   "metadata": {
+    "links": [{"url", "text", "rel"}],        // always present
+    "images": [{"url", "alt", "width?", "height?"}],  // always present
+    "num_pages": 18,           // PDF only
+    "content_length": 123456,  // PDF only
     "search_elapsed_ms": 1234,
     "fetch_elapsed_ms": 5678,
     "total_tokens_returned": 9000

@@ -13,7 +13,7 @@ Source layout: package lives at `src/lightcrawl/`; tests at `tests/`; benchmark 
 All commands assume the repo's `.venv` is set up via `pip install -e ".[dev,bench]"` and `playwright install chromium`.
 
 ```bash
-.venv/bin/pytest -q                              # full suite (fully offline, ~96 tests)
+.venv/bin/pytest -q                              # full suite (fully offline, 270 tests)
 .venv/bin/pytest tests/test_router.py -q         # one file
 .venv/bin/pytest tests/test_router.py::test_blocks_private_url   # one test
 .venv/bin/ruff check src tests bench             # lint
@@ -36,12 +36,14 @@ The codebase has two cooperating subsystems sharing one process:
 
 ```
 cli.py (argparse entry, one async subcommand per public op)
-  ├── Router (router.py) ────────► fetch_http.py / fetch_browser.py
+  ├── Router (router.py) ────────► fetch_http.py / fetch_browser.py / fetch_pdf.py
   └── SearchService (search/service.py) ─── owns ───► Router (router.py)
                                                        │
                                                        ├─ L1: fetch_http.py  (curl_cffi, sync, run via asyncio.to_thread)
                                                        ├─ L2: fetch_browser.py (Playwright + stealth, single Chromium / multi-context)
-                                                       └─ L3: same as L2 but loads storage_state from auth.py profile
+                                                       ├─ L3: same as L2 but loads storage_state from auth.py profile
+                                                       ├─ PDF: fetch_pdf.py (pypdf extraction, L1-only)
+                                                       └─ Actions: actions.py (declarative click/write/press/wait/scroll/screenshot)
 ```
 
 Every async subcommand routes through `cli._safe_run()` which converts a `FetchError` or any uncaught exception into the same `{"ok": false, "error_code": "...", "error_detail": "..."}` envelope, so skills can parse every invocation uniformly.
@@ -62,6 +64,7 @@ Every async subcommand routes through `cli._safe_run()` which converts a `FetchE
 - `_select_target(doc, selector)` auto-scopes to a single `<main>` or `<article>` when present (this is what makes Wikipedia's H1 land on line 1 instead of line 95). Falls back to `<body>`.
 - `_dom_headings(target)` extracts `<h1>`–`<h6>` directly from DOM (not from rendered markdown — so inline `<code>`/`<strong>`/`<em>` formatting doesn't break extraction).
 - `_locate_headings_in_markdown` matches DOM heading text to ATX heading lines using `_strip_md_formatting()` to remove backticks/asterisks/links from the markdown side before comparison. Without this, headings with inline formatting return `line=None`.
+- `_extract_links(doc, base_url)` and `_extract_images(doc, base_url)` (PR 3) scan the raw DOM before `_clean_dom`. Links get `{url, text, rel}` with internal/external classification; images get `{url, alt, width?, height?}`. Both appear in `metadata` on every response and as dedicated `output_format`s.
 - `detect_spa_shell(html)` returns True if `_SPA_SHELL_PATTERNS` matches an empty `<div id="root">` / `<div id="__next">` regardless of page length, OR if there's a `<noscript>` JS warning on a small page.
 - Overflow handling: anything over `max_inline_tokens` is dumped to `~/.lightcrawl/dumps/<sha1>.md`; the response carries `dump_path` plus the heading list with line numbers so the agent can grep the dump.
 
