@@ -10,6 +10,18 @@ from .errors import ErrorCode, FetchError
 DEFAULT_TIMEOUT = 5.0
 MAX_BYTES = 10 * 1024 * 1024  # 10MB
 
+# Desktop default — chrome120 is well-tested in curl_cffi. Newer profiles
+# (chrome142/chrome146) exist but moving the default belongs in its own
+# upgrade PR with bench-level validation.
+DEFAULT_IMPERSONATE = "chrome120"
+
+# Mobile profile used when FetchRequest.mobile=True. Picked from the iOS
+# Safari family curl_cffi ships (`safari260_ios`, `safari184_ios`, …) —
+# `safari260_ios` is the most recent at time of writing. Switching the
+# whole impersonate (UA + TLS + JA3 + HTTP/2 settings) avoids the bot
+# signal of a UA-only flip. Validate in the experiment before merging.
+MOBILE_IMPERSONATE = "safari260_ios"
+
 
 @dataclass
 class HttpResult:
@@ -24,7 +36,7 @@ def fetch(
     url: str,
     *,
     timeout: float = DEFAULT_TIMEOUT,
-    impersonate: str = "chrome120",
+    impersonate: str = DEFAULT_IMPERSONATE,
     headers: dict[str, str] | None = None,
 ) -> HttpResult:
     """L1 fetch using curl_cffi with browser TLS fingerprint impersonation.
