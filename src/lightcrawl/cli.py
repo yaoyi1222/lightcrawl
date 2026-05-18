@@ -72,8 +72,9 @@ def _parse_actions(raw: str | None) -> list:
     if raw.startswith("@"):
         path = raw[1:]
         try:
-            raw = open(path, "r").read()
-        except (OSError, ValueError) as e:
+            with open(path, "r") as f:
+                raw = f.read()
+        except OSError as e:
             raise ValueError(f"cannot read actions file {path!r}: {e}") from e
     try:
         items = _json.loads(raw)

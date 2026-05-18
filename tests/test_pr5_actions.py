@@ -381,3 +381,175 @@ async def test_no_screenshots_when_no_screenshot_actions_or_final(router):
 
     assert out["ok"] is True
     assert "screenshots" not in out
+
+
+# ══ scroll direction / wait validation in from_dict / parse_actions ══
+
+
+def test_from_dict_scroll_rejects_invalid_direction():
+    with pytest.raises(ValueError, match="scroll direction"):
+        from_dict({"type": "scroll", "direction": "left"})
+
+
+def test_from_dict_scroll_rejects_negative_pixels():
+    with pytest.raises(ValueError, match="scroll pixels"):
+        from_dict({"type": "scroll", "pixels": -1})
+
+
+def test_from_dict_wait_rejects_negative():
+    with pytest.raises(ValueError, match="wait milliseconds must be >= 0"):
+        from_dict({"type": "wait", "milliseconds": -100})
+
+
+def test_from_dict_wait_rejects_over_limit():
+    with pytest.raises(ValueError, match="wait milliseconds must be <="):
+        from_dict({"type": "wait", "milliseconds": 999999})
+
+
+def test_parse_actions_enforces_screenshot_cap():
+    """>20 ScreenshotAction entries → ValueError at parse time, not runtime."""
+    actions = [{"type": "screenshot"}] * 21
+    with pytest.raises(ValueError, match="max 20 ScreenshotAction"):
+        parse_actions(actions)
+
+
+def test_parse_actions_allows_exactly_20_screenshots():
+    """20 ScreenshotAction entries is at the limit — should pass."""
+    actions = [{"type": "screenshot"}] * 20
+    result = parse_actions(actions)
+    assert len(result) == 20
+
+
+# ══ action exception handling ══
+
+
+async def test_non_timeout_playwright_error_maps_to_action_failed(router):
+    """page.click() raising a non-PWTimeout Playwright error (e.g.
+    'element not visible') must become ACTION_FAILED, not UNKNOWN."""
+    async def fake_l2(pool, url, *, actions=None, **kw):
+        # Simulate what the real fetch_browser.fetch does — re-raise as
+        # FetchError(ACTION_FAILED) regardless of the inner exception type.
+        raise FetchError(
+            ErrorCode.ACTION_FAILED,
+            "action[0] type=ClickAction: Error: element is not visible",
+        )
+
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_browser.fetch", side_effect=fake_l2):
+        out = await router.fetch(FetchRequest(
+            url="https://example.com/",
+            actions=[ClickAction(selector="#hidden-btn")],
+        ))
+
+    assert out["ok"] is False
+    assert out["error_code"] == ErrorCode.ACTION_FAILED.value
+    assert "action[0]" in out["error_detail"]
+
+
+# ══ CLI @file edge cases ══
+
+
+def test_parse_actions_cli_missing_file():
+    """@missing_file.json → clear ValueError, not a traceback."""
+    from lightcrawl.cli import _parse_actions
+
+    with pytest.raises(ValueError, match="cannot read actions file"):
+        _parse_actions("@/nonexistent/path/actions.json")
+
+
+# ══ strategy=http + actions must fail fast ══
+
+
+async def test_strategy_http_with_actions_fails_fast(router):
+    """--strategy http + non-empty actions → clear error, not silent no-op."""
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"):
+        out = await router.fetch(FetchRequest(
+            url="https://example.com/",
+            strategy="http",
+            actions=[ClickAction(selector="#btn")],
+        ))
+
+    assert out["ok"] is False
+    assert "actions" in out["error_detail"].lower()
+    assert "strategy" in out["error_detail"].lower()
+
+
+# ══ WriteAction.timeout_ms ══
+
+
+def test_from_dict_write_with_timeout():
+    a = from_dict({"type": "write", "selector": "#f", "text": "hi",
+                   "timeout_ms": 10000})
+    assert isinstance(a, WriteAction)
+    assert a.timeout_ms == 10000
+
+
+def test_from_dict_write_default_timeout():
+    a = from_dict({"type": "write", "selector": "#f", "text": "hi"})
+    assert a.timeout_ms == 5000
+
+
+# ══ timeout_ms validation ══
+
+
+def test_from_dict_click_rejects_negative_timeout():
+    with pytest.raises(ValueError, match="timeout_ms must be between"):
+        from_dict({"type": "click", "selector": "#b", "timeout_ms": -5000})
+
+
+def test_from_dict_click_rejects_zero_timeout():
+    with pytest.raises(ValueError, match="timeout_ms must be between"):
+        from_dict({"type": "click", "selector": "#b", "timeout_ms": 0})
+
+
+def test_from_dict_write_rejects_overlimit_timeout():
+    with pytest.raises(ValueError, match="timeout_ms must be between"):
+        from_dict({"type": "write", "selector": "#f", "text": "hi",
+                   "timeout_ms": 999999})
+
+
+def test_from_dict_click_accepts_valid_timeout():
+    a = from_dict({"type": "click", "selector": "#b", "timeout_ms": 30000})
+    assert a.timeout_ms == 30000
+
+
+# ══ type validation in _validate_value ══
+
+
+def test_from_dict_scroll_pixels_string_returns_value_error():
+    """pixels='100' → ValueError (not TypeError leaking). Used to raise
+    TypeError before the isinstance check was added."""
+    with pytest.raises(ValueError, match=r"actions\[0\]"):
+        parse_actions([{"type": "scroll", "pixels": "100"}])
+
+
+def test_from_dict_wait_milliseconds_bool_returns_value_error():
+    """milliseconds=True → ValueError (bool is int subclass, must be rejected)."""
+    with pytest.raises(ValueError, match=r"actions\[0\]"):
+        parse_actions([{"type": "wait", "milliseconds": True}])
+
+
+# ══ PressAction key validation ══
+
+
+def test_from_dict_press_accepts_valid_keys():
+    for key in ["Enter", "Tab", "Escape", "ArrowDown", "ArrowUp", "Backspace",
+                "Delete", "Space"]:
+        a = from_dict({"type": "press", "key": key})
+        assert a.key == key
+
+
+def test_from_dict_press_rejects_lowercase_key():
+    """Playwright keys are case-sensitive; 'enter' ≠ 'Enter'."""
+    with pytest.raises(ValueError, match="unknown press key"):
+        from_dict({"type": "press", "key": "enter"})
+
+
+def test_from_dict_press_rejects_unknown_key():
+    with pytest.raises(ValueError, match="unknown press key"):
+        from_dict({"type": "press", "key": "Ctrl"})
+
+
+def test_from_dict_press_rejects_non_string_key():
+    with pytest.raises(ValueError, match=r"actions\[0\]"):
+        parse_actions([{"type": "press", "key": 13}])

@@ -294,6 +294,14 @@ class Router:
 
         # Forced strategies
         if req.strategy == "http":
+            if req.actions:
+                return _failure(
+                    req.url,
+                    ErrorCode.UNSUPPORTED_CONTENT_TYPE,
+                    "actions require a browser; incompatible with --strategy http. "
+                    "Remove --strategy http or drop --actions.",
+                    attempts,
+                )
             return await self._fetch_http_only(req, attempts)
         if req.strategy == "browser":
             return await self._fetch_browser_only(req, attempts, storage_state=None)
