@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Literal
 from urllib.parse import urlparse
 
-from . import auth, content as content_mod, fetch_browser, fetch_http
+from . import auth, content as content_mod, fetch_browser, fetch_http, fetch_pdf
 from .errors import ErrorCode, FetchError
 from .url_safety import domain_matches, validate_url
 
@@ -66,7 +66,7 @@ def _now_iso() -> str:
 # An early reject avoids the "Download is starting" Playwright exception and
 # the wasted L1→L2 escalation cycle.
 _BINARY_EXTS = (
-    ".pdf", ".zip", ".tar.gz", ".tar.bz2", ".tar.xz", ".tgz", ".rar", ".7z",
+    ".zip", ".tar.gz", ".tar.bz2", ".tar.xz", ".tgz", ".rar", ".7z",
     ".dmg", ".exe", ".msi", ".pkg", ".deb", ".rpm",
     ".docx", ".xlsx", ".pptx", ".odt", ".ods",
     ".mp3", ".mp4", ".mov", ".avi", ".mkv", ".webm",
@@ -89,6 +89,16 @@ def _looks_like_binary_url(url: str) -> bool:
         return False
     path = parsed.path.lower()
     return any(path.endswith(ext) for ext in _BINARY_EXTS)
+
+
+def _looks_like_pdf_url(url: str) -> bool:
+    """True if the URL path ends with `.pdf` (case-insensitive).
+    Query-string PDFs (`?file=foo.pdf`) are not matched — only path-based."""
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    return parsed.path.lower().endswith(".pdf")
 
 
 def _domain_hint_for(url: str) -> str | None:
@@ -117,8 +127,6 @@ def _binary_url_suggestions(url: str) -> list[str]:
         "this URL points to a binary file the browser would download, not a "
         "renderable HTML page",
         f"download with shell tools instead, e.g. `curl -L -o file '{url}'`",
-        "if it's an arXiv PDF, try the abs/HTML page instead "
-        "(e.g. https://arxiv.org/abs/<id>)",
     ]
 
 
@@ -248,8 +256,8 @@ class Router:
             return _failure(
                 req.url,
                 ErrorCode.UNSUPPORTED_CONTENT_TYPE,
-                "URL points to a binary file (likely PDF/archive/media); "
-                "the fetcher only handles HTML",
+                "URL points to a binary file (archive/media/executable); "
+                "the fetcher only handles HTML and PDF",
                 attempts=[],
                 suggestions=_binary_url_suggestions(req.url),
             )
@@ -260,6 +268,11 @@ class Router:
             return _failure(req.url, e.code, e.detail, attempts=[])
 
         attempts: list[Attempt] = []
+
+        # PDF dispatch: detect .pdf path, download + extract text via pypdf.
+        # Must come AFTER SSRF check above. L1-only in v0.2 (no L2 fallback).
+        if _looks_like_pdf_url(req.url):
+            return await self._fetch_pdf_route(req, attempts)
 
         # L3 path: explicit profile
         if req.profile or req.strategy == "authed":
@@ -470,6 +483,54 @@ class Router:
         if result["ok"]:
             auth.update_profile_status(req.profile, status="active")
         return result
+
+    async def _fetch_pdf_route(self, req: FetchRequest, attempts: list[Attempt]) -> dict:
+        """Download PDF via curl_cffi and extract text with pypdf. L1-only."""
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(
+                    fetch_pdf.fetch_pdf,
+                    req.url,
+                    timeout=min(15.0, req.timeout_ms / 1000.0),
+                    headers=req.headers or None,
+                ),
+                timeout=req.timeout_ms / 1000.0,
+            )
+        except asyncio.TimeoutError:
+            return _failure(req.url, ErrorCode.TIMEOUT, "PDF download timed out", attempts)
+        except FetchError as e:
+            attempts.append(Attempt("pdf", e.code.value.lower()))
+            return _failure(req.url, e.code, e.detail, attempts)
+
+        attempts.append(Attempt("pdf", "200"))
+        inline, truncated, dump_path = content_mod.maybe_dump(
+            req.url, result.markdown, req.max_inline_tokens
+        )
+        return {
+            "ok": True,
+            "url": req.url,
+            "final_url": result.final_url,
+            "strategy_used": "pdf",
+            "fetched_at": _now_iso(),
+            "title": "",
+            "content": inline,
+            "content_truncated": truncated,
+            "dump_path": dump_path,
+            "metadata": {
+                "status_code": 200,
+                "content_type": "application/pdf",
+                "elapsed_ms": result.elapsed_ms,
+                "needs_js_hint": None,
+                "suggested_selectors": [],
+                "selector_hint": None,
+                "links": [],
+                "images": [],
+                "num_pages": result.num_pages,
+                "content_length": result.content_length,
+            },
+            "attempts": [a.to_dict() for a in attempts],
+            "headings": [],
+        }
 
 
 # -- response shapers --

@@ -1,0 +1,22 @@
+# PDF regression URLs for PR 4 benchmark.
+# Run: .venv/bin/python -m bench.runner --urls bench/urls_pdf.toml --out bench/results/pdf.json
+
+[[urls]]
+url = "https://arxiv.org/pdf/2301.07041.pdf"
+label = "arxiv-abs-2301"
+
+[[urls]]
+url = "https://arxiv.org/pdf/2401.00001.pdf"
+label = "arxiv-abs-2401"
+
+[[urls]]
+url = "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf"
+label = "w3c-dummy"
+
+[[urls]]
+url = "https://www.adobe.com/support/products/enterprise/knowledgecenter/media/c4611_sample_explain.pdf"
+label = "adobe-sample"
+
+[[urls]]
+url = "https://arxiv.org/pdf/1706.03762.pdf"
+label = "arxiv-attention"
