@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Literal
@@ -36,7 +37,7 @@ class FetchRequest:
     strategy: Strategy = "auto"
     profile: str | None = None
     output_format: Literal[
-        "markdown", "html", "text", "screenshot", "markdown+screenshot"
+        "markdown", "html", "text", "screenshot", "markdown+screenshot", "links", "images"
     ] = "markdown"
     selector: str | None = None
     wait_for: WaitForArg | None = None
@@ -500,6 +501,8 @@ def _success_from_http(
             "needs_js_hint": extracted.needs_js_hint,
             "suggested_selectors": extracted.suggested_selectors,
             "selector_hint": extracted.selector_hint,
+            "links": extracted.links,
+            "images": extracted.images,
         },
         "attempts": [a.to_dict() for a in attempts],
         "headings": [{"level": h.level, "text": h.text, "line": h.line} for h in extracted.headings],
@@ -532,6 +535,8 @@ def _success_from_browser(
             "needs_js_hint": extracted.needs_js_hint,
             "suggested_selectors": extracted.suggested_selectors,
             "selector_hint": extracted.selector_hint,
+            "links": extracted.links,
+            "images": extracted.images,
         },
         "attempts": [a.to_dict() for a in attempts],
         "headings": [{"level": h.level, "text": h.text, "line": h.line} for h in extracted.headings],
@@ -556,6 +561,10 @@ def _format_body(fmt: str, extracted: content_mod.ExtractedContent, raw_html: st
         # PR 2: caller asked for the PNG only. The image bytes go in the
         # `screenshots` array, the text body is intentionally empty.
         return ""
+    if fmt == "links":
+        return json.dumps(extracted.links, ensure_ascii=False)
+    if fmt == "images":
+        return json.dumps(extracted.images, ensure_ascii=False)
     # "markdown" or "markdown+screenshot" — both yield markdown text
     return extracted.markdown
 
@@ -608,6 +617,8 @@ def _failure(
             "needs_js_hint": None,
             "suggested_selectors": [],
             "selector_hint": None,
+            "links": [],
+            "images": [],
         },
         "error_code": code.value,
         "error_detail": detail,

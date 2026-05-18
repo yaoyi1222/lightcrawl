@@ -442,3 +442,129 @@ async def test_spa_navigation_loop_no_hint_for_unknown_domain(router):
     assert out["ok"] is False
     assert out["error_code"] == ErrorCode.SPA_NAVIGATION_LOOP.value
     assert out["suggestions"] == []
+
+
+# ---- PR 3: links/images in metadata + output formats ----------------------
+
+
+_HTML_WITH_LINKS_IMAGES = (
+    "<html><head><title>PR 3 Test</title></head>"
+    "<body><article>"
+    "<h1>Links &amp; Images</h1>"
+    "<p>Text long enough to bypass the tiny-body escalation heuristic and "
+    "produce stable output in tests.</p>"
+    "<a href='https://example.com/about'>About</a> "
+    "<a href='https://other.com/ext'>External</a>"
+    "<img src='/hero.jpg' alt='Hero' width='800' height='600'>"
+    "</article></body></html>"
+)
+
+
+async def test_metadata_includes_links_and_images(router):
+    """After PR 3, metadata MUST always contain 'links' and 'images' lists.
+    Even a page with no links/images gets empty lists."""
+    fake = HttpResult(
+        final_url="https://example.com/",
+        status_code=200,
+        text=_HTML_WITH_LINKS_IMAGES,
+        content_type="text/html",
+        elapsed_ms=5,
+    )
+    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("refetch.fetch_http.fetch", return_value=fake):
+        out = await router.fetch(FetchRequest(url="https://example.com/"))
+
+    assert out["ok"] is True
+    metadata = out["metadata"]
+    assert "links" in metadata
+    assert "images" in metadata
+    assert isinstance(metadata["links"], list)
+    assert isinstance(metadata["images"], list)
+    # Verify content
+    assert len(metadata["links"]) == 2
+    assert metadata["links"][0]["url"] == "https://example.com/about"
+    assert len(metadata["images"]) == 1
+    assert metadata["images"][0]["url"] == "https://example.com/hero.jpg"
+
+
+async def test_output_format_links_returns_json_array(router):
+    """output_format='links' body must be a JSON array of link objects."""
+    fake = HttpResult(
+        final_url="https://example.com/",
+        status_code=200,
+        text=_HTML_WITH_LINKS_IMAGES,
+        content_type="text/html",
+        elapsed_ms=5,
+    )
+    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("refetch.fetch_http.fetch", return_value=fake):
+        out = await router.fetch(
+            FetchRequest(url="https://example.com/", output_format="links")
+        )
+
+    assert out["ok"] is True
+    import json
+    links = json.loads(out["content"])
+    assert isinstance(links, list)
+    assert len(links) == 2
+    assert links[0]["url"] == "https://example.com/about"
+    assert links[0]["rel"] == "internal"
+
+
+async def test_output_format_images_returns_json_array(router):
+    """output_format='images' body must be a JSON array of image objects."""
+    fake = HttpResult(
+        final_url="https://example.com/",
+        status_code=200,
+        text=_HTML_WITH_LINKS_IMAGES,
+        content_type="text/html",
+        elapsed_ms=5,
+    )
+    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("refetch.fetch_http.fetch", return_value=fake):
+        out = await router.fetch(
+            FetchRequest(url="https://example.com/", output_format="images")
+        )
+
+    assert out["ok"] is True
+    import json
+    images = json.loads(out["content"])
+    assert isinstance(images, list)
+    assert len(images) == 1
+    assert images[0]["url"] == "https://example.com/hero.jpg"
+    assert images[0]["alt"] == "Hero"
+    assert images[0]["width"] == 800
+
+
+async def test_metadata_links_images_present_on_default_format(router):
+    """Default output_format='markdown' must still carry links+images in
+    metadata — PR 3 adds always-on extraction, not conditional on format."""
+    fake = HttpResult(
+        final_url="https://example.com/",
+        status_code=200,
+        text=_HTML_WITH_LINKS_IMAGES,
+        content_type="text/html",
+        elapsed_ms=5,
+    )
+    with patch("refetch.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("refetch.fetch_http.fetch", return_value=fake):
+        out = await router.fetch(FetchRequest(url="https://example.com/"))
+
+    assert out["ok"] is True
+    assert len(out["metadata"]["links"]) == 2
+    assert len(out["metadata"]["images"]) == 1
+    # The content is markdown, not JSON
+    assert "About" in out["content"]
+    assert "External" in out["content"]
+
+
+async def test_failure_response_has_links_images_in_metadata(router):
+    """Review fix: failure path metadata MUST include empty links/images
+    lists so callers get a consistent schema across ok/error paths."""
+    with patch("refetch.url_safety.socket.gethostbyname", return_value="127.0.0.1"):
+        out = await router.fetch(FetchRequest(url="http://localhost/admin"))
+
+    assert out["ok"] is False
+    assert out["metadata"]["links"] == []
+    assert out["metadata"]["images"] == []
+
