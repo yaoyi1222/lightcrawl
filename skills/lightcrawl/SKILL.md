@@ -3,9 +3,9 @@ name: lightcrawl
 description: Use this skill for fetching a specific URL when the built-in WebFetch tool fails or you need anti-bot bypass, JS rendering, login sessions, or selector-scoped extraction. Also use it for web search when you need richer snippets than the built-in WebSearch or when you want search plus page content in one call. Invoked as a local CLI via the Bash tool — `lightcrawl fetch <url>`, `lightcrawl search <query>`, `lightcrawl search-and-read <query>`, `lightcrawl auth login <profile> <url>`. Do not use for files already in the conversation.
 ---
 
-# Lightcrawl Skill
+# lightcrawl Skill
 
-Lightcrawl is a local CLI. Every command prints a JSON object on stdout and exits
+lightcrawl is a local CLI. Every command prints a JSON object on stdout and exits
 0 on success, 1 on failure. Invoke it through the **Bash** tool and parse the
 JSON yourself (use `jq` when you only need one field).
 

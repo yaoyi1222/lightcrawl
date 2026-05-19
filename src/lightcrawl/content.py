@@ -194,7 +194,7 @@ def _clean_dom(
     """Remove non-content elements from the DOM in place.
 
     `extra_strip` is a list of additional tag names to strip on top of the
-    built-in `_REMOVE_TAGS` (script/style/iframe/...). Used by Firecrawl-style
+    built-in `_REMOVE_TAGS` (script/style/iframe/...). Used by firecrawl-style
     `exclude_tags` to let callers blacklist e.g. `<nav>`/`<aside>`/`<footer>`
     that we deliberately keep by default (see comment on `_REMOVE_TAGS`).
 
@@ -389,7 +389,7 @@ def _select_target(
     chrome (nav menus, language lists) that would otherwise eat the
     max_inline_tokens budget.
 
-    `include_tags` is a Firecrawl-style positive tag allowlist (e.g.
+    `include_tags` is a firecrawl-style positive tag allowlist (e.g.
     ['article', 'aside']). When non-empty, the auto main/article scoping is
     deliberately skipped — otherwise an `include_tags=['aside']` request would
     return nothing on pages that have a single <main> not containing the

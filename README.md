@@ -2,7 +2,7 @@
 
 # lightcrawl
 
-**Open-source, local, lightweight Firecrawl alternative.**
+**Open-source, local, lightweight firecrawl alternative.**
 
 Anti-bot bypass, JS rendering, login sessions, declarative browser actions, PDF parsing, screenshots, and multi-backend search — all in one local CLI. No cloud, no API keys required for core functionality, no per-request pricing.
 
@@ -19,9 +19,9 @@ Anti-bot bypass, JS rendering, login sessions, declarative browser actions, PDF 
 
 ## What is lightcrawl?
 
-Lightcrawl is a local CLI that any AI agent (Claude Code, Codex, Gemini CLI, Copilot CLI) invokes through its shell to fetch and search the web. It is a drop-in replacement for the agent's built-in `WebFetch` / `WebSearch` tools that actually works on the modern web.
+lightcrawl is a local CLI that any AI agent (Claude Code, Codex, Gemini CLI, Copilot CLI) invokes through its shell to fetch and search the web. It is a drop-in replacement for the agent's built-in `WebFetch` / `WebSearch` tools that actually works on the modern web.
 
-Positioned as an **open-source, local, free Firecrawl alternative** — matching Firecrawl `/scrape`'s core parameter surface while running entirely on your machine.
+Positioned as an **open-source, local, free firecrawl alternative** — matching firecrawl `/scrape`'s core parameter surface while running entirely on your machine.
 
 ### When built-in tools fail
 
@@ -38,7 +38,7 @@ Positioned as an **open-source, local, free Firecrawl alternative** — matching
 
 ## Feature highlights
 
-### Fetch (Firecrawl `/scrape` parity)
+### Fetch (firecrawl `/scrape` parity)
 
 - **Three-layer escalation** — L1 `curl_cffi` (Chrome 120 impersonate) → L2 Playwright + stealth → L3 saved login sessions. Each request only escalates as far as needed.
 - **Content pipeline** — auto-scopes to `<main>`/`<article>`, strips invisible elements, returns structured `headings` with line numbers. Saves 30–90% of tokens.
@@ -47,7 +47,7 @@ Positioned as an **open-source, local, free Firecrawl alternative** — matching
 - **Links & images always-on** — `metadata.links` (`{url, text, rel}`) and `metadata.images` (`{url, alt, width?, height?}`) populated on every response regardless of output format.
 - **PDF parsing** — `.pdf` URLs are auto-dispatched to pypdf. Per-page text extraction, magic-byte fallback, `metadata.num_pages` / `metadata.content_length`.
 - **Mobile emulation** — iOS Safari impersonate profile (UA + TLS fingerprint + viewport) on both L1 and L2.
-- **Custom headers + tag filtering** — `--header KEY=VAL` (repeatable), `--include-tag` / `--exclude-tag` for Firecrawl-style DOM tag scoping.
+- **Custom headers + tag filtering** — `--header KEY=VAL` (repeatable), `--include-tag` / `--exclude-tag` for firecrawl-style DOM tag scoping.
 
 ### Search
 
@@ -157,11 +157,11 @@ Adding a new backend is ~120 lines — see `src/lightcrawl/search/backends/brave
 
 ---
 
-## vs Firecrawl
+## vs firecrawl
 
-lightcrawl targets parity with Firecrawl's `/scrape` endpoint — not `/crawl`, `/map`, or LLM-based extraction (deferred to v0.3+).
+lightcrawl targets parity with firecrawl's `/scrape` endpoint — not `/crawl`, `/map`, or LLM-based extraction (deferred to v0.3+).
 
-| Firecrawl `/scrape` param | lightcrawl status |
+| firecrawl `/scrape` param | lightcrawl status |
 |---|---|
 | `url` | ✅ |
 | `formats: [markdown, html, rawHtml, screenshot, links, ..., images]` | ✅ markdown, html, text, screenshot, markdown+screenshot, links, images |
@@ -180,7 +180,7 @@ lightcrawl targets parity with Firecrawl's `/scrape` endpoint — not `/crawl`, 
 
 <div align="center">
 
-**lightcrawl = free, local Firecrawl `/scrape` with anti-bot bypass and login sessions.**
+**lightcrawl = free, local firecrawl `/scrape` with anti-bot bypass and login sessions.**
 
 </div>
 

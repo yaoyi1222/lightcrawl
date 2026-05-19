@@ -1,4 +1,4 @@
-# Contributing to Lightcrawl
+# Contributing to lightcrawl
 
 ## Architecture
 
@@ -91,7 +91,7 @@ bench/                   # tiktoken-based token comparison harness
 
 ## Benchmarks
 
-Run a 10-URL benchmark comparing the naive built-in fetcher (`httpx` + markdownify whole page) against Lightcrawl:
+Run a 10-URL benchmark comparing the naive built-in fetcher (`httpx` + markdownify whole page) against lightcrawl:
 
 ```bash
 .venv/bin/python -m bench.runner --out bench/results/full.json
@@ -100,7 +100,7 @@ Run a 10-URL benchmark comparing the naive built-in fetcher (`httpx` + markdowni
 
 Latest results (counted with tiktoken `cl100k_base`):
 
-| Category | Baseline tokens | Lightcrawl auto | Lightcrawl + selector | Saving (auto) | Saving (selector) |
+| Category | Baseline tokens | lightcrawl auto | lightcrawl + selector | Saving (auto) | Saving (selector) |
 |---|---:|---:|---:|---:|---:|
 | Wikipedia (long article) | 67.1k | 9.6k | 8.0k | ↓85.7% | **↓88.1%** |
 | Static doc (Python docs) | 22.7k | 4.8k | 4.5k | ↓78.8% | ↓80.1% |
@@ -111,9 +111,9 @@ Latest results (counted with tiktoken `cl100k_base`):
 
 ¹ Pages that are mostly content with little boilerplate get little extraction benefit.
 
-`Lightcrawl auto` is `lightcrawl fetch <url>` with no hint — what the agent gets on the first call. `Lightcrawl + selector` adds a `--selector` from the response's `suggested_selectors` field.
+`lightcrawl auto` is `lightcrawl fetch <url>` with no hint — what the agent gets on the first call. `lightcrawl + selector` adds a `--selector` from the response's `suggested_selectors` field.
 
-Success rate: **10/10 baseline, 10/10 Lightcrawl auto, 7/7 Lightcrawl + selector**. Full per-URL table in [`bench/results/full_v2.md`](bench/results/full_v2.md).
+Success rate: **10/10 baseline, 10/10 lightcrawl auto, 7/7 lightcrawl + selector**. Full per-URL table in [`bench/results/full_v2.md`](bench/results/full_v2.md).
 
 ## Development
 

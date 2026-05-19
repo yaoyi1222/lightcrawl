@@ -472,7 +472,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="lightcrawl",
         description=(
-            "Lightcrawl CLI — fetch URLs, search the web, and manage login "
+            "lightcrawl CLI — fetch URLs, search the web, and manage login "
             "profiles. Every command prints a JSON object on stdout; exit "
             "code 0 means ok=true, 1 means ok=false."
         ),

@@ -76,11 +76,11 @@ async def test_headers_passed_to_l1(router):
         out = await router.fetch(
             FetchRequest(
                 url="https://example.com/",
-                headers={"X-Lightcrawl-Test": "1", "Referer": "https://r.example/"},
+                headers={"X-lightcrawl-Test": "1", "Referer": "https://r.example/"},
             )
         )
     assert out["ok"] is True
-    assert seen["headers"] == {"X-Lightcrawl-Test": "1", "Referer": "https://r.example/"}
+    assert seen["headers"] == {"X-lightcrawl-Test": "1", "Referer": "https://r.example/"}
 
 
 async def test_headers_default_empty_does_not_pass_dict_to_l1(router):

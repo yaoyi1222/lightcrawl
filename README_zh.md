@@ -2,7 +2,7 @@
 
 # lightcrawl
 
-**开源、本地、轻量的 Firecrawl 替代品。**
+**开源、本地、轻量的 firecrawl 替代品。**
 
 反爬绕过、JS 渲染、登录会话、声明式浏览器动作、PDF 解析、截图、多后端搜索 — 全部在一个本地 CLI 中。无需云端、核心功能无需 API key、无按次计费。
 
@@ -19,9 +19,9 @@
 
 ## lightcrawl 是什么？
 
-Lightcrawl 是一个本地 CLI，任何 AI Agent（Claude Code、Codex、Gemini CLI、Copilot CLI）通过 shell 调用它来抓取和搜索网页。它是 Agent 内置 `WebFetch` / `WebSearch` 的升级替代方案，能在现代 Web 上真正工作。
+lightcrawl 是一个本地 CLI，任何 AI Agent（Claude Code、Codex、Gemini CLI、Copilot CLI）通过 shell 调用它来抓取和搜索网页。它是 Agent 内置 `WebFetch` / `WebSearch` 的升级替代方案，能在现代 Web 上真正工作。
 
-定位为 **开源、本地、免费的 Firecrawl 替代品** — 对标 Firecrawl `/scrape` 的核心参数，同时完全在你自己机器上运行。
+定位为 **开源、本地、免费的 firecrawl 替代品** — 对标 firecrawl `/scrape` 的核心参数，同时完全在你自己机器上运行。
 
 ### 内置工具做不到的事
 
@@ -38,7 +38,7 @@ Lightcrawl 是一个本地 CLI，任何 AI Agent（Claude Code、Codex、Gemini 
 
 ## 功能亮点
 
-### 抓取（对标 Firecrawl `/scrape`）
+### 抓取（对标 firecrawl `/scrape`）
 
 - **三层逐步升级** — L1 `curl_cffi`（Chrome 120 TLS 指纹）→ L2 Playwright + stealth → L3 已保存登录态。每请求只升级到必要层级。
 - **内容管线** — 自动定位 `<main>`/`<article>`，剥离不可见元素，返回结构化 `headings` + 行号。节省 30–90% token。
@@ -47,7 +47,7 @@ Lightcrawl 是一个本地 CLI，任何 AI Agent（Claude Code、Codex、Gemini 
 - **链接/图片始终抓取** — `metadata.links`（`{url, text, rel}`）和 `metadata.images`（`{url, alt, width?, height?}`）对所有成功请求生效，不依赖 output_format。
 - **PDF 解析** — `.pdf` URL 自动路由到 pypdf。逐页文本提取，magic-byte 回退检测，返回 `metadata.num_pages` / `metadata.content_length`。
 - **移动端模拟** — iOS Safari impersonate profile（UA + TLS 指纹 + 视口），L1 和 L2 同步切换。
-- **自定义 headers + 标签过滤** — `--header KEY=VAL`（可重复），`--include-tag` / `--exclude-tag` Firecrawl 风格 DOM 标签范围控制。
+- **自定义 headers + 标签过滤** — `--header KEY=VAL`（可重复），`--include-tag` / `--exclude-tag` firecrawl 风格 DOM 标签范围控制。
 
 ### 搜索
 
@@ -157,11 +157,11 @@ cli.py ─── Router (router.py) ────────► fetch_http.py   
 
 ---
 
-## vs Firecrawl
+## vs firecrawl
 
-lightcrawl 对标 Firecrawl `/scrape` 端点 — 不含 `/crawl`、`/map` 和 LLM 提取（这些延后到 v0.3+）。
+lightcrawl 对标 firecrawl `/scrape` 端点 — 不含 `/crawl`、`/map` 和 LLM 提取（这些延后到 v0.3+）。
 
-| Firecrawl `/scrape` 参数 | lightcrawl 状态 |
+| firecrawl `/scrape` 参数 | lightcrawl 状态 |
 |---|---|
 | `url` | ✅ |
 | `formats: [markdown, html, rawHtml, screenshot, links, ..., images]` | ✅ markdown、html、text、screenshot、markdown+screenshot、links、images |
@@ -180,7 +180,7 @@ lightcrawl 对标 Firecrawl `/scrape` 端点 — 不含 `/crawl`、`/map` 和 LL
 
 <div align="center">
 
-**lightcrawl = 免费、本地的 Firecrawl `/scrape`，附带反爬绕过和登录会话。**
+**lightcrawl = 免费、本地的 firecrawl `/scrape`，附带反爬绕过和登录会话。**
 
 </div>
 
