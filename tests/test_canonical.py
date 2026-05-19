@@ -109,3 +109,45 @@ def test_blank_value_query_param_preserved():
 def test_empty_query_no_question_mark():
     # All params dropped → no trailing "?"
     assert canonicalize_url("https://example.com/p?utm_source=x") == "https://example.com/p"
+
+
+# ----- url_hash with profile dimension --------------------------------------
+
+def test_url_hash_is_40_hex_chars():
+    h = url_hash("https://example.com/p", profile=None)
+    assert len(h) == 40
+    assert all(c in "0123456789abcdef" for c in h)
+
+
+def test_url_hash_deterministic():
+    h1 = url_hash("https://example.com/p", profile=None)
+    h2 = url_hash("https://example.com/p", profile=None)
+    assert h1 == h2
+
+
+def test_url_hash_profile_none_equals_empty_string():
+    # API ergonomics: None and "" are both "no profile" — must hash same.
+    h_none = url_hash("https://example.com/p", profile=None)
+    h_empty = url_hash("https://example.com/p", profile="")
+    assert h_none == h_empty
+
+
+def test_url_hash_different_profile_yields_different_hash():
+    # The core security invariant. v0.3-design.md §5.2: a profile=twitter
+    # fetch of x.com/private must not be served back to a profile=None caller.
+    h_none = url_hash("https://x.com/private", profile=None)
+    h_twitter = url_hash("https://x.com/private", profile="twitter")
+    h_github = url_hash("https://x.com/private", profile="github")
+    assert h_none != h_twitter
+    assert h_twitter != h_github
+    assert h_none != h_github
+
+
+def test_url_hash_separator_prevents_collision():
+    # A naive concat (url + profile) would collide:
+    #   url="x.com/a",  profile="b"     and
+    #   url="x.com/ab", profile=""
+    # The "\0" separator must make these distinct.
+    h1 = url_hash("https://x.com/a", profile="b")
+    h2 = url_hash("https://x.com/ab", profile="")
+    assert h1 != h2

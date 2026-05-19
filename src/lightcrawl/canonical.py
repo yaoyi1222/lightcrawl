@@ -81,5 +81,18 @@ def canonicalize_url(url: str, *, ignore_query: bool = False,
 
 
 def url_hash(canonical_url: str, *, profile: str | None) -> str:
-    """Stub for Task 3 — returns empty string for now."""
-    raise NotImplementedError("implemented in Task 3")
+    """Cache key for (canonical_url, profile) pairs. 40-hex sha1.
+
+    The profile dimension is a security boundary, not an optimization. A
+    ``profile=twitter`` fetch of x.com/private produces a different hash from
+    a ``profile=None`` call to the same URL, preventing cross-profile data
+    leak via cache replay. See v0.3-design.md §5.2.
+
+    ``profile=None`` and ``profile=""`` both mean "no profile" and hash
+    identically. The ``"\\0"`` separator between url and profile prevents
+    collisions where a longer url + empty profile would equal a shorter url
+    + non-empty profile under naive concatenation.
+    """
+    profile_str = profile or ""
+    payload = canonical_url + "\0" + profile_str
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
