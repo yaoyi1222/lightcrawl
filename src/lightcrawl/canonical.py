@@ -28,6 +28,18 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 
+# Tracking query params dropped during canonicalization (drop_tracking=True).
+# Sources: GA / Meta / LinkedIn / Twitter / Mailchimp common params. Extend
+# carefully — every addition is a backwards-incompatible change to cache keys.
+_TRACKING_PARAMS = frozenset({
+    "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+    "utm_id", "utm_name",
+    "fbclid", "gclid", "dclid", "msclkid", "yclid",
+    "ref", "ref_src", "ref_url",
+    "mc_cid", "mc_eid",
+    "_ga", "_gl",
+})
+
 
 def canonicalize_url(url: str, *, ignore_query: bool = False,
                      drop_tracking: bool = True) -> str:
@@ -56,9 +68,14 @@ def canonicalize_url(url: str, *, ignore_query: bool = False,
     if len(path) > 1 and path.endswith("/"):
         path = path.rstrip("/")
 
-    # query handled in Task 2; for now pass through unchanged so step 1
-    # tests can pass. The Task 2 step will replace this branch.
-    query = "" if ignore_query else parsed.query
+    if ignore_query:
+        query = ""
+    else:
+        pairs = parse_qsl(parsed.query, keep_blank_values=True)
+        if drop_tracking:
+            pairs = [(k, v) for k, v in pairs if k.lower() not in _TRACKING_PARAMS]
+        pairs.sort(key=lambda kv: kv[0])
+        query = urlencode(pairs)
 
     return urlunparse((scheme, netloc, path, "", query, ""))
 

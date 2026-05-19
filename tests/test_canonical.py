@@ -54,3 +54,58 @@ def test_drops_fragment():
 
 def test_drops_empty_fragment():
     assert canonicalize_url("https://example.com/p#") == "https://example.com/p"
+
+
+# ----- query handling --------------------------------------------------------
+
+def test_keeps_single_query_param():
+    assert canonicalize_url("https://example.com/p?a=1") == "https://example.com/p?a=1"
+
+
+def test_sorts_query_params_by_key():
+    assert canonicalize_url("https://example.com/p?b=2&a=1") == "https://example.com/p?a=1&b=2"
+
+
+def test_preserves_percent_encoded_chars():
+    # %20 (space) round-trips via parse_qsl+urlencode → "+" (RFC-3986 equivalent
+    # in application/x-www-form-urlencoded). We document "+" as canonical form.
+    assert canonicalize_url("https://example.com/p?q=hello%20world") == "https://example.com/p?q=hello+world"
+
+
+def test_drops_utm_source_by_default():
+    assert canonicalize_url("https://example.com/p?utm_source=newsletter") == "https://example.com/p"
+
+
+def test_drops_all_utm_params():
+    u = "https://example.com/p?utm_source=x&utm_medium=y&utm_campaign=z&a=1"
+    assert canonicalize_url(u) == "https://example.com/p?a=1"
+
+
+def test_drops_fbclid_gclid_ref():
+    u = "https://example.com/p?fbclid=abc&gclid=def&ref=hn&keep=1"
+    assert canonicalize_url(u) == "https://example.com/p?keep=1"
+
+
+def test_drop_tracking_false_keeps_tracking_params():
+    u = "https://example.com/p?utm_source=x&a=1"
+    assert canonicalize_url(u, drop_tracking=False) == "https://example.com/p?a=1&utm_source=x"
+
+
+def test_ignore_query_drops_everything():
+    u = "https://example.com/p?a=1&b=2"
+    assert canonicalize_url(u, ignore_query=True) == "https://example.com/p"
+
+
+def test_ignore_query_drops_tracking_too():
+    u = "https://example.com/p?a=1&utm_source=x"
+    assert canonicalize_url(u, ignore_query=True) == "https://example.com/p"
+
+
+def test_blank_value_query_param_preserved():
+    # ?flag&other=1 — flag has blank value; should not be dropped
+    assert canonicalize_url("https://example.com/p?flag&other=1") == "https://example.com/p?flag=&other=1"
+
+
+def test_empty_query_no_question_mark():
+    # All params dropped → no trailing "?"
+    assert canonicalize_url("https://example.com/p?utm_source=x") == "https://example.com/p"
