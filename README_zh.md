@@ -1,8 +1,10 @@
 <div align="center">
 
-# Lightcrawl
+# lightcrawl
 
-**Lightcrawl 一键升级 Agent（Claude Code、Codex、Gemini CLI、Copilot CLI 等）的网页抓取与搜索能力。反爬、JS 渲染、登录态、多后端搜索全部内置，内容管线智能去噪，节省 30–90% 的 token 消耗。本地 CLI + 一份 skill，Agent 通过 shell 直接调用。**
+**开源、本地、轻量的 Firecrawl 替代品。**
+
+反爬绕过、JS 渲染、登录会话、声明式浏览器动作、PDF 解析、截图、多后端搜索 — 全部在一个本地 CLI 中。无需云端、核心功能无需 API key、无按次计费。
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -15,51 +17,56 @@
 
 ---
 
-## Lightcrawl
+## lightcrawl 是什么？
 
-Lightcrawl 是一个本地 CLI + 一份 skill 文件，升级 Agent 的网页抓取与搜索能力。它支持：
+Lightcrawl 是一个本地 CLI，任何 AI Agent（Claude Code、Codex、Gemini CLI、Copilot CLI）通过 shell 调用它来抓取和搜索网页。它是 Agent 内置 `WebFetch` / `WebSearch` 的升级替代方案，能在现代 Web 上真正工作。
 
-- ✅ 反爬绕过 — 穿透 Cloudflare、TLS 指纹检测、浏览器挑战
-- ✅ JavaScript 渲染 — 真实浏览器执行 JS，覆盖 React、Next.js、Vue 等 SPA
-- ✅ 登录态会话 — 保存并复用登录凭据，访问登录墙后的页面
-- ✅ 多后端搜索 — Brave、Serper、Tavily 自动故障转移
-- ✅ 省 token 管线 — 自动定位到主内容区域，砍掉 30–90% 噪声
-- ✅ 一站式搜索+阅读 — `lightcrawl search-and-read` 一次调用完成搜索与并发抓取
-- ✅ 链接/图片提取 — `metadata.links` / `metadata.images` 始终可用，支持专用 JSON 输出格式
-- ✅ PDF 解析 — pypdf 文本提取，支持 magic-byte 回退检测
-- ✅ 截图输出 — 全页面 PNG，包括动作触发的中间截图
-- ✅ 浏览器动作 — click、write、press key、wait、scroll、screenshot 在抓取前执行
-- ✅ 移动端模拟 — iOS Safari impersonate profile，TLS 指纹同步切换
-- ✅ 自定义 headers + 标签过滤 — `include_tags`/`exclude_tags` Firecrawl 风格 DOM 范围控制
+定位为 **开源、本地、免费的 Firecrawl 替代品** — 对标 Firecrawl `/scrape` 的核心参数，同时完全在你自己机器上运行。
 
----
+### 内置工具做不到的事
 
-## Claude Code 内置的 WebFetch 和 WebSearch
-
-Claude Code 等 Agent 内置的基础 HTTP 抓取和网页搜索，能用，但遇到以下情况就静默失败：
-
-- ❌ Cloudflare 保护的页面 — TLS 指纹不匹配，返回挑战页或空响应
-- ❌ JavaScript 渲染的 SPA — React、Next.js、Vue 返回空壳 `<div id="root">`
-- ❌ 登录墙后的内容 — X/Twitter、LinkedIn、私有 Wiki 只拿到登录页
-- ❌ 整页 dump — 导航栏、侧边栏、footer、广告全塞进上下文，浪费 60–95% token
-- ❌ 单一搜索源 — 一个后端，无限速容灾，挂了就是挂了
+| 问题 | 内置 WebFetch | lightcrawl |
+|---|---|---|
+| Cloudflare 保护的页面 | ❌ TLS 指纹不匹配，返回挑战页 | ✅ curl_cffi + Playwright 隐身，自动逐级升级（L1→L2→L3） |
+| JavaScript 渲染的 SPA | ❌ 空壳 `<div id="root">` | ✅ 无头 Chromium 执行 JS，等待选择器 |
+| 登录墙后的页面（X、LinkedIn） | ❌ 只能拿到登录页 | ✅ 通过 `auth login` 保存登录态，复用 session |
+| 整页 dump（导航、侧边栏、广告） | ❌ 浪费 60–95% token | ✅ 自动定位 `<main>`/`<article>`，去噪清洗 |
+| PDF 下载链接 | ❌ 静默失败 | ✅ pypdf 逐页文本提取 |
+| 单一搜索后端 | ❌ 限速 = 彻底不可用 | ✅ Brave + Serper + Tavily 自动故障转移 |
 
 ---
 
-## 使用 Lightcrawl 之后
+## 功能亮点
 
-- ✅ **什么都能抓。** Cloudflare 拦截、JS SPA、登录墙 — 三层逐步升级全部搞定
-- ✅ **省 30–90% token** 内容管线自动定位 `<main>`/`<article>`，先清洗再输出。结构化标题+行号，可按章节 grep dump 文件
-- ✅ **搜索+阅读一步到位** `lightcrawl search-and-read` 搜索结果和 top N 页面全文一起返回，比手动搜索+N 次 fetch 省 ~30%+ token
-- ✅ **持久化登入状态** `lightcrawl auth login` 打开真实浏览器，手动登录，session 保存为 profile，下次 `lightcrawl fetch <url> --profile <name>` 直接复用
-- ✅ **隐私** 抓取过程均在本地完成，不过任何第三方云端
+### 抓取（对标 Firecrawl `/scrape`）
+
+- **三层逐步升级** — L1 `curl_cffi`（Chrome 120 TLS 指纹）→ L2 Playwright + stealth → L3 已保存登录态。每请求只升级到必要层级。
+- **内容管线** — 自动定位 `<main>`/`<article>`，剥离不可见元素，返回结构化 `headings` + 行号。节省 30–90% token。
+- **输出格式** — markdown（默认）、html、text、screenshot（全页面 PNG）、markdown+screenshot、links（JSON）、images（JSON）。
+- **浏览器动作** — `click`、`write`、`press`、`wait`、`scroll`、`screenshot` 在 Playwright 上下文中于页面加载后、内容提取前执行。中间截图可复用，稀疏索引。
+- **链接/图片始终抓取** — `metadata.links`（`{url, text, rel}`）和 `metadata.images`（`{url, alt, width?, height?}`）对所有成功请求生效，不依赖 output_format。
+- **PDF 解析** — `.pdf` URL 自动路由到 pypdf。逐页文本提取，magic-byte 回退检测，返回 `metadata.num_pages` / `metadata.content_length`。
+- **移动端模拟** — iOS Safari impersonate profile（UA + TLS 指纹 + 视口），L1 和 L2 同步切换。
+- **自定义 headers + 标签过滤** — `--header KEY=VAL`（可重复），`--include-tag` / `--exclude-tag` Firecrawl 风格 DOM 标签范围控制。
+
+### 搜索
+
+- **三个后端** — Brave（独立索引，免费 2k/月）、Serper（Google SERP）、Tavily（LLM 优化 snippet）。自动故障转移。
+- **搜索+阅读** — `search-and-read` 一次调用完成搜索 + 并发抓取 top N。
+- **结构化结果** — 富 snippet、域名提示、每条结果的 `fetch_hint`。
+
+### 认证
+
+- **登录 Profile** — `auth login` 弹出有头 Chromium，用户手动登录（密码永不接触工具），session 保存复用。
+- **域名绑定** — Profile 绑定到登录 URL 的 eTLD+1。
+- **SSRF 防护** — 默认拦截 loopback、私有网段、link-local IP。
 
 ---
 
 ## 快速开始
 
 ```bash
-git clone https://github.com/yaoyi1222/Lightcrawl.git
+git clone https://github.com/yaoyi1222/lightcrawl.git
 cd lightcrawl
 python3.11 -m venv .venv
 .venv/bin/pip install -e ".[dev,bench]"
@@ -67,7 +74,7 @@ python3.11 -m venv .venv
 ```
 
 ```bash
-# 可选：搜索后端（选一个配置即可）
+# 可选：搜索后端（任选一个）
 export BRAVE_SEARCH_API_KEY=...
 export SERPER_API_KEY=...
 export TAVILY_API_KEY=...
@@ -75,169 +82,139 @@ export TAVILY_API_KEY=...
 
 ### 接入 Agent
 
-Lightcrawl 是一个普通的本地 CLI — 每个命令在 stdout 输出一个 JSON 对象,成功 exit 0,失败 exit 1。把 skill 文件丢给 Agent,它就知道什么时候调用 CLI:
-
 ```bash
-# Claude Code(项目级)
+# Claude Code（项目级）
 mkdir -p .claude/skills/lightcrawl
 cp skills/lightcrawl/SKILL.md .claude/skills/lightcrawl/SKILL.md
 
-# Claude Code(用户级)
+# Claude Code（用户级）
 mkdir -p ~/.claude/skills/lightcrawl
 cp skills/lightcrawl/SKILL.md ~/.claude/skills/lightcrawl/SKILL.md
 ```
 
-其他 Agent(Codex、Gemini、Copilot CLI)同样指向 `skills/lightcrawl/SKILL.md` — 这是一份纯 markdown,说明 CLI 的命令、JSON 契约、错误处理规则。不需要常驻进程、不需要 MCP server、不需要 transport 配置。
+其他 Agent 同样指向 `skills/lightcrawl/SKILL.md`。无需常驻进程、无需 MCP server、无需 transport 配置。
 
 ```bash
-# 自检
 .venv/bin/lightcrawl list-backends
 .venv/bin/lightcrawl fetch https://example.com/
 ```
 
 ---
 
-## Fetch vs 内置 WebFetch
+## 架构
 
-内置 `WebFetch` 返回**整个**页面——导航、侧边栏、footer、广告——并且对 Cloudflare、JS 渲染、登录墙后的内容静默失败。
+```
+cli.py ─── Router (router.py) ────────► fetch_http.py     L1: curl_cffi + TLS 指纹伪装
+       │                               ► fetch_browser.py  L2: Playwright + stealth
+       │                               ► fetch_browser.py  L3: L2 + 已保存 storage_state
+       │                               ► fetch_pdf.py      PDF: pypdf 提取
+       │                               ► actions.py        Actions: click/write/scroll/...
+       │
+       └── SearchService ─── owns ───► Router（并行抓取）
+```
 
-每个请求按 **HTTP+ → 浏览器 → 已登录浏览器** 逐级尝试,只升级到必要的层级:
-
-| 层级 | 技术 | 能处理什么 |
-|---|---|---|
-| **L1 HTTP+** | `curl_cffi` 模拟 Chrome 120 TLS 指纹 | 静态页面、大多数文档站、新闻站 |
-| **L2 浏览器** | Playwright + `playwright-stealth` + Chromium | JS 渲染的 SPA(React、Next.js、Vue)、HTTP 下返回空壳的页面 |
-| **L3 已登录** | Playwright 加载已保存的登录 `storage_state` | 需要登录的页面(X/Twitter、LinkedIn、内网 wiki) |
-
-Lightcrawl 自动逐步升级:L1 先尝试,遭遇 Cloudflare / 空 SPA 壳时升级 L2,检测到登录墙时升级 L3。
+每条命令向 stdout 输出一个 JSON 对象，成功 exit 0，失败 exit 1。Skill 文件（`skills/lightcrawl/SKILL.md`）是 Agent 读取的规范参考。
 
 ### Token 效率
 
-Lightcrawl 的内容管线自动定位到 `<main>`/`<article>`,剥离不可见元素,返回结构化 `headings: [{level, text, line}]`。`--selector` 参数精确锁定内容区域(如 GitHub 的 `article.markdown-body`);`--output-format text` 去掉 markdown 语法开销。
+| 网站 | 内置 WebFetch | lightcrawl 默认 | 加 `--selector` | 最多节省 |
+|---|---|---|---|---|
+| **Wikipedia** Python 词条 | 58,000 chars | 40,000 | 40,000 | **31%** |
+| **GitHub** psf/requests | 17,500 chars | 8,040 | 2,069 | **90%** |
+| **Django docs** 概览 | 22,742 chars | 14,695 | 12,867 | **52%** |
+| **Python docs** 教程 | 15,224 chars | 22,160* | — | — |
 
-| 网站 | 内置 WebFetch | Lightcrawl `默认` | Lightcrawl `--selector` | Lightcrawl `--output-format text` | 最多节省 |
-|---|---|---|---|---|---|
-| **Wikipedia** Python 词条 | 58,000 chars | 40,000 | 40,000 | 40,000 | **31%** |
-| **GitHub** psf/requests | 17,500 chars | 8,040 | 2,069 | 1,818 | **90%** |
-| **Django docs** 概览 | 22,742 chars | 14,695 | 12,867 | 10,972 | **52%** |
-| **Python docs** 教程 | 15,224 chars | 22,160* | 22,160* | 18,034 | — |
-
-\*Python docs 通过 Lightcrawl 拿到了更多内容,是因为 Playwright 执行 JS 后加载了完整的侧边栏导航。
-
-### 登录会话
-
-`lightcrawl auth login <profile> <url>` 打开**有头** Chromium 窗口让用户手动登录。工具永不接触密码。登录后,session 保存为命名 profile,绑定到登录 URL 的 eTLD+1,并可通过 `lightcrawl fetch <url> --profile <name>` 复用。
+\*lightcrawl 拿到更多内容 — Playwright 执行 JS 后加载了完整的侧边栏导航。
 
 ---
 
-## Search vs 内置 WebSearch 和 tavily-search
-
-内置 `WebSearch` 返回短片段,没有抓取能力。`tavily-search` 速度快、有 AI 合成答案,但完全跑在 Tavily 的云端——没有 JS 渲染、没有登录态、没有后端容灾。Lightcrawl 在本地运行,具备 JS 渲染、登录态和多后端故障转移。
-
-### Lightcrawl 的优势场景
-
-| 场景 | 为什么用 Lightcrawl |
-|---|---|
-| **答案在登录墙后面** | `lightcrawl search-and-read "<query>" --profile x` — 一次调用完成搜索 + 已登录抓取 |
-| **排名靠前的结果是 JS 渲染的 SPA** | `search-and-read` 自动通过 Playwright 浏览器管线渲染页面 |
-| **需要跨搜索引擎的多样化来源** | 2+ 后端(Brave + Tavily),自动故障转移;Brave 的独立索引在 deep 搜索时覆盖 17 个独立域名 vs Tavily 的 10 个 |
-| **页面很长 — 需要标题导航,而非全文** | 每个抓取到的页面都带结构化 `headings` + 行号;agent 按标题文本定位,按行号 grep dump 文件 |
-| **一个后端被限制了** | 自动故障转移到下一个已配置的后端 |
-
-### 直接对比:Lightcrawl vs tavily-search
-
-任务:"收集 Anthropic 最新的财务信息"
-
-| 维度 | Lightcrawl | tavily-search |
-|---|---|---|
-| **搜索覆盖面(域名数)** | **17** 个(deep,Brave 后端) | 10 个(advanced depth) |
-| **默认 snippet 质量** | ~219 chars/条 | ~148 chars/条 |
-| **登录墙后的来源** | ✅ `lightcrawl auth login` → 已登录抓取 X、LinkedIn、私仓 | ❌ |
-| **JS 渲染** | ✅ Playwright 浏览器执行 JS,等待选择器 | ❌ 仅服务端内容 |
-| **单次调用拿全文** | `search-and-read` 抓取 top N 页(3 页约 13k chars) | `--include-raw-content` 抓取全部(10 页约 240k chars) |
-| **AI 合成答案** | ❌ | ✅ `--include-answer` 直接给答案 |
-| **结构化输出** | ✅ headings + 行号 + dump_path | ❌ 原始内容块 |
-| **后端冗余** | ✅ Brave + Tavily,限速时自动切换 | ❌ 单一 Tavily API |
-| **数据主权** | 跑在你机器上;你的 IP,你的 cookie | 跑在 Tavily 的云端 |
-
-**取舍**:要快速得到一个事实答案,tavily 的 `--include-answer` 更快(一次调用,2-6s,AI 合成答案)。要做需要**多样化来源**、**登录态内容**、**JS 渲染**、**或者能扛住后端故障**的研究——Lightcrawl 是唯一能同时覆盖这四个需求的选项。
-
-Lightcrawl 内置的 `TavilyBackend` 只用 Tavily 的**搜索排名**能力(`include_raw_content=false`)——抓取始终在你本地机器。如果还需要 `tavily-extract` / `tavily-crawl` / `tavily-map`,同时安装 `tavily-mcp` 即可;它们**互补,不冲突**。
-
-## 命令清单
-
-每条命令都向 stdout 输出一个 JSON 对象。exit 0 = `ok: true`,exit 1 = `ok: false`。完整 flag 见 `lightcrawl <subcmd> --help`。
+## 命令
 
 | 命令 | 用途 |
 |---|---|
-| `lightcrawl fetch <url>` | 抓取 URL,自动按策略升级(L1 HTTP → L2 浏览器 → L3 已登录)。返回 markdown + headings(level/text/line)+ 推荐 selector + 超长时的 dump 路径。 |
-| `lightcrawl search <query>` | Web 搜索,返回结构化结果,含富 snippet 和每条结果的 `fetch_hint`。 |
-| `lightcrawl search-and-read <query>` | 一站式:搜索 + 并发抓取 top N。比手动分步省 ~30%+ token。 |
-| `lightcrawl list-backends` | 报告当前可用的搜索后端及配置状态。 |
-| `lightcrawl auth login <profile> <url>` | 弹出有头浏览器让用户登录某站点,保存为 profile。 |
-| `lightcrawl auth list` / `lightcrawl auth show <profile>` | 列出已保存的 profile(只返回元信息,不返回 cookie)。 |
-| `lightcrawl auth revoke <profile>` | 删除 profile。 |
+| `lightcrawl fetch <url>` | 自动策略升级抓取。支持 `--output-format`、`--selector`、`--actions`、`--mobile`、`--header`、`--include-tag`/`--exclude-tag`、`--remove-base64-images`，screenshot / links / images 输出。 |
+| `lightcrawl search <query>` | Web 搜索，结构化结果 + 每条结果的 `fetch_hint`。 |
+| `lightcrawl search-and-read <query>` | 搜索 + 并发抓取 top N。 |
+| `lightcrawl list-backends` | 报告已配置的搜索后端。 |
+| `lightcrawl auth login <profile> <url>` | 有头浏览器手动登录，保存 profile。 |
+| `lightcrawl auth list` / `show` / `revoke` | 管理已保存的登录 profile。 |
 
-Skill 文件 [`skills/lightcrawl/SKILL.md`](skills/lightcrawl/SKILL.md) 是 Agent 实际读取的参考 — flag 表、决策流、错误处理、诚实契约都在里面。
+完整 flag：`lightcrawl <subcmd> --help`。
+
+---
+
+## 搜索后端
+
+内置三个可插拔后端。默认 **Brave → Serper → Tavily**（选第一个已配置的）。
+
+| 后端 | 强项 | 何时选 |
+|---|---|---|
+| **Brave** | 独立索引，免费 2k/月 | 默认。绝大多数查询 |
+| **Serper** | Google SERP 排名 | Brave 配额用尽或遗漏时 |
+| **Tavily** | LLM 优化 snippet（200–500 字） | 长 snippet 直接答 ~70% 查询，省去 fetch |
+
+加新后端约 120 行 — 参考 `src/lightcrawl/search/backends/brave.py`。
+
+---
+
+## vs Firecrawl
+
+lightcrawl 对标 Firecrawl `/scrape` 端点 — 不含 `/crawl`、`/map` 和 LLM 提取（这些延后到 v0.3+）。
+
+| Firecrawl `/scrape` 参数 | lightcrawl 状态 |
+|---|---|
+| `url` | ✅ |
+| `formats: [markdown, html, rawHtml, screenshot, links, ..., images]` | ✅ markdown、html、text、screenshot、markdown+screenshot、links、images |
+| `headers` | ✅ `--header KEY=VAL`（可重复） |
+| `includeTags` / `excludeTags` | ✅ `--include-tag` / `--exclude-tag` |
+| `waitFor`（ms） | ✅ `--wait-for-network-idle` |
+| `actions`（click、write、screenshot、scroll、wait、press） | ✅ `--actions '[...]'` |
+| `mobile` | ✅ `--mobile`（iOS Safari impersonate） |
+| `onlyMainContent` | ✅ 默认行为（自动定位 `<main>`/`<article>`） |
+| `removeBase64Images` | ✅ `--remove-base64-images` |
+| `location`（国家） | 延后到 v0.3 |
+| `extract`（LLM 结构化） | 延后到 v0.5 |
+| `blockAds` | 延后到 v0.3 |
+| 云端托管 | ❌ — 本地运行（你的 IP、你的 cookie、不过第三方云） |
+| 免费 | ✅ — MIT 协议，核心抓取无需 API key |
+
+<div align="center">
+
+**lightcrawl = 免费、本地的 Firecrawl `/scrape`，附带反爬绕过和登录会话。**
+
+</div>
+
+---
 
 ## 配置
 
-`~/.lightcrawl/config.toml`(可选):
+`~/.lightcrawl/config.toml`（可选）：
 
 ```toml
 [ssrf]
-extra_allowlist = ["internal.example.com"]   # 显式 allowlist 内网域名
+extra_allowlist = ["internal.example.com"]
 
 [search]
 default_backend = "brave"
 ```
 
-环境变量:
-
-| 变量 | 用途 |
+| 环境变量 | 用途 |
 |---|---|
-| `BRAVE_SEARCH_API_KEY` | Brave 搜索(默认后端,免费 2k/月) |
-| `SERPER_API_KEY` | Serper(Google SERP 代理,免费 2.5k 一次性、~$0.001/次) |
-| `TAVILY_API_KEY` | Tavily(LLM 优化 snippet,免费 1k/月、~$0.008/次) |
+| `BRAVE_SEARCH_API_KEY` | Brave 搜索（免费 2k/月） |
+| `SERPER_API_KEY` | Serper Google SERP 代理 |
+| `TAVILY_API_KEY` | Tavily LLM 优化搜索 |
 
-## 搜索后端
+---
 
-内置三个可插拔后端。默认按 **Brave → Serper → Tavily** 顺序选第一个已配置的;可通过 `lightcrawl search "<query>" --backend serper` 显式覆盖。
+## 安全
 
-| 后端 | 强项 | 何时选 |
-|---|---|---|
-| **Brave** | 独立索引、免费 2k/月、无 ToS 风险 | 默认。绝大多数查询 |
-| **Serper** | 纯 Google 排名,付费档最便宜 | Brave 索引找不到、或 Brave 配额用尽时 |
-| **Tavily** | LLM 优化的 `content` 字段,snippet 常 200–500 字(质量最高) | 想跳过 fetch — 长 snippet 直接答 ~70% 的查询 |
+- Profile 以 0600 权限的明文 `storage_state` JSON 存储（Playwright 官方惯例）。
+- `auth show` 只返回元信息 — 永不泄露 cookie。
+- Profile 绑定到登录 URL 的 eTLD+1（绑定到 `x.com` 的 `twitter` profile 不能用于 `attacker.com`）。
+- SSRF 防护默认拦截 loopback、私有网段、云元数据 IP。
+- 抓取内容视为数据；skill 指导 Agent 忽略页面内的指令性文字。
 
-加新后端约 120 行 — 参考 `src/lightcrawl/search/backends/brave.py`。
-
-### 与云端方案(如 `tavily-mcp`)的关系
-
-`Lightcrawl` 与 Tavily 官方 `tavily-mcp` **互补,不冲突** — Lightcrawl 是本地 CLI,`tavily-mcp` 是云端 MCP server,两者可同时使用:
-
-| | `tavily-mcp`(云端) | `Lightcrawl`(本地 CLI) |
-|---|---|---|
-| 搜索排名 + LLM snippet | ✅ 业界最强之一 | ✅ 通过 `TavilyBackend`(仅 snippet 路径) |
-| 登录态站点(X、私有 GH、内网 wiki) | ❌ | ✅ `lightcrawl auth login` profile |
-| JS 渲染 + 反爬 | 部分 | ✅ Playwright + stealth + `curl_cffi` |
-| Cookie / IP / 浏览器主权 | 跑在 Tavily 服务器 | 跑在**你**的机器 |
-| 结构化 `error_code` + `dump_path` + heading 行号 | ❌ | ✅ |
-
-`Lightcrawl` 内置的 `TavilyBackend` 故意只用 Tavily 的搜索路径(`include_raw_content=false`)— 抓取始终在本地,这是本地运行时的核心价值。如果还想要 `tavily-extract` / `tavily-crawl` / `tavily-map`,直接装一份 `tavily-mcp` 与本项目并存即可。
-
-## 安全模型
-
-- Profile 以 **0600 权限的明文 `storage_state` JSON** 存储 — 与 Playwright 官方默认一致。威胁模型是"同机其他用户"(0600 已足够),不是"以当前用户身份运行的恶意进程"(那种情况下 keyring + AES 也挡不住,加密就是安全剧场)。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
-- 模型永远拿不到 cookie 内容 — `lightcrawl auth show` 只返回元信息。
-- `lightcrawl auth login` 永远使用**有头**浏览器。密码和 2FA 由用户亲自输入,CLI 只在检测到登录成功后才调用 `context.storage_state()`。
-- Profile 绑定到登录 URL 的 **eTLD+1**。绑定到 `x.com` 的 `twitter` profile 不能被用来抓 `attacker.com/x.com/...`。
-- 所有请求经过 SSRF 防护,默认拦截 loopback、私有网段、云元数据 IP。
-- 抓取到的内容被 skill 视为数据而非指令;skill 明确告知 Agent 忽略页面内的指令性文字。
-
-## 贡献
-
-详见 [CONTRIBUTING.md](CONTRIBUTING.md) 了解架构、开发配置、基准测试和贡献指南。
+---
 
 ## 许可证
 

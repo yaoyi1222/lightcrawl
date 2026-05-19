@@ -2,7 +2,9 @@
 
 # lightcrawl
 
-**lightcrawl is a drop-in upgrade for WebFetch and WebSearch in any agent (Claude Code, Codex, Gemini CLI, Copilot CLI, etc.). It adds anti-bot bypass, JS rendering, saved login sessions, and multi-backend search — plus a content pipeline that cuts 30–90% of wasted tokens — all in a local CLI the agent invokes through its shell.**
+**Open-source, local, lightweight Firecrawl alternative.**
+
+Anti-bot bypass, JS rendering, login sessions, declarative browser actions, PDF parsing, screenshots, and multi-backend search — all in one local CLI. No cloud, no API keys required for core functionality, no per-request pricing.
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -15,44 +17,49 @@
 
 ---
 
-## lightcrawl
+## What is lightcrawl?
 
-lightcrawl is a local CLI plus a one-file skill that upgrades your agent's ability to fetch and search the web. It supports:
+Lightcrawl is a local CLI that any AI agent (Claude Code, Codex, Gemini CLI, Copilot CLI) invokes through its shell to fetch and search the web. It is a drop-in replacement for the agent's built-in `WebFetch` / `WebSearch` tools that actually works on the modern web.
 
-- ✅ Anti-bot bypass — survives Cloudflare, TLS fingerprinting, and browser challenges
-- ✅ JavaScript rendering — executes JS in a real browser for SPAs (React, Next.js, Vue)
-- ✅ Login sessions — saves and reuses authenticated sessions for login-walled pages
-- ✅ Multi-backend search — Brave, Serper, Tavily with automatic failover
-- ✅ Token-saving pipeline — auto-scopes to main content, strips 30–90% of noise
-- ✅ One-shot search+read — `lightcrawl search-and-read` finds results and fetches top pages in one call
-- ✅ Links & images extraction — always-on `metadata.links` / `metadata.images`, plus dedicated JSON output formats
-- ✅ PDF parsing — text extraction from PDFs via pypdf, with magic-byte fallback
-- ✅ Screenshots — full-page PNG output, including intermediate action-triggered captures
-- ✅ Declarative browser actions — click, write, press key, wait, scroll, screenshot before content extraction
-- ✅ Mobile emulation — iOS Safari impersonate profile with matching TLS fingerprint
-- ✅ Custom headers + tag filtering — `include_tags`/`exclude_tags` for Firecrawl-style DOM scoping
+Positioned as an **open-source, local, free Firecrawl alternative** — matching Firecrawl `/scrape`'s core parameter surface while running entirely on your machine.
 
----
+### When built-in tools fail
 
-## Claude Code's built-in WebFetch & WebSearch
-
-Agents like Claude Code ship with basic HTTP fetch and web search. When they work, great. When they don't, they fail silently:
-
-- ❌ Cloudflare-protected pages — TLS fingerprint mismatch, challenge page, or empty response
-- ❌ JavaScript-rendered SPAs — React, Next.js, Vue return empty `<div id="root">` shells
-- ❌ Login-walled content — X/Twitter, LinkedIn, private wikis return sign-in pages
-- ❌ Full-page dump — navigation, sidebar, footer, ads all land in your context, wasting 60–95% of tokens
-- ❌ Single-source search — one backend, no failover, rate-limit = dead end
+| Problem | Built-in WebFetch | lightcrawl |
+|---|---|---|
+| Cloudflare-protected pages | ❌ TLS fingerprint mismatch, challenge page | ✅ curl_cffi + Playwright stealth, auto-escalation (L1→L2→L3) |
+| JavaScript-rendered SPAs | ❌ Empty `<div id="root">` shell | ✅ Headless Chromium executes JS, waits for selectors |
+| Login-walled pages (X, LinkedIn) | ❌ Gets sign-in page | ✅ Saved login sessions via `auth login` |
+| Full-page dump (nav, sidebar, ads) | ❌ Wastes 60–95% of tokens | ✅ Auto-scopes to `<main>`/`<article>`, strips noise |
+| PDF download links | ❌ Silent failure | ✅ pypdf text extraction with per-page output |
+| Single backend, no failover | ❌ Rate-limit = dead end | ✅ Brave + Serper + Tavily with automatic failover |
 
 ---
 
-## With lightcrawl
+## Feature highlights
 
-- ✅ **Fetch anything.** Cloudflare blocks, JS SPAs, login walls — three-layer escalation handles them all
-- ✅ **Save 30–90% tokens.** Content pipeline auto-scopes to `<main>`/`<article>`, strips noise before it hits your context. Headings with line numbers let you grep dumps by section
-- ✅ **Search + read in one call.** `lightcrawl search-and-read` finds results AND fetches top pages in parallel. Saves ~30%+ tokens vs manual search + N×fetch rounds
-- ✅ **Login once, reuse forever.** `lightcrawl auth login` opens a real browser, you log in, session is saved. `lightcrawl fetch <url> --profile x` uses it. Password never touches the tool
-- ✅ **Your machine, your data.** Your IP, your cookies, your login sessions. Nothing goes through a third-party cloud
+### Fetch (Firecrawl `/scrape` parity)
+
+- **Three-layer escalation** — L1 `curl_cffi` (Chrome 120 impersonate) → L2 Playwright + stealth → L3 saved login sessions. Each request only escalates as far as needed.
+- **Content pipeline** — auto-scopes to `<main>`/`<article>`, strips invisible elements, returns structured `headings` with line numbers. Saves 30–90% of tokens.
+- **Output formats** — markdown (default), html, text, screenshot (full-page PNG), markdown+screenshot, links (JSON), images (JSON).
+- **Declarative browser actions** — `click`, `write`, `press`, `wait`, `scroll`, `screenshot` execute in the Playwright context between page load and content extraction. Reusable intermediate screenshots with sparse indexing.
+- **Links & images always-on** — `metadata.links` (`{url, text, rel}`) and `metadata.images` (`{url, alt, width?, height?}`) populated on every response regardless of output format.
+- **PDF parsing** — `.pdf` URLs are auto-dispatched to pypdf. Per-page text extraction, magic-byte fallback, `metadata.num_pages` / `metadata.content_length`.
+- **Mobile emulation** — iOS Safari impersonate profile (UA + TLS fingerprint + viewport) on both L1 and L2.
+- **Custom headers + tag filtering** — `--header KEY=VAL` (repeatable), `--include-tag` / `--exclude-tag` for Firecrawl-style DOM tag scoping.
+
+### Search
+
+- **Three backends** — Brave (independent index, free 2k/mo), Serper (Google SERP), Tavily (LLM-optimized snippets). Auto-failover.
+- **Search + read** — `search-and-read` finds results and fetches top N pages in one call.
+- **Structured results** — rich snippets, domain hints, per-result `fetch_hint`.
+
+### Auth
+
+- **Login profiles** — `auth login` opens a headed Chromium, user logs in manually (password never touches the tool), session saved for reuse.
+- **Domain-bound** — profiles are bound to the login URL's eTLD+1.
+- **SSRF guard** — loopback, private, link-local IPs blocked by default.
 
 ---
 
@@ -75,8 +82,6 @@ export TAVILY_API_KEY=...
 
 ### Wire it into your agent
 
-lightcrawl is a normal CLI on your `PATH` — every command prints one JSON object on stdout and exits 0 on success, 1 on failure. Drop the skill file into your agent so it knows when to reach for the CLI:
-
 ```bash
 # Claude Code (per-project)
 mkdir -p .claude/skills/lightcrawl
@@ -87,98 +92,99 @@ mkdir -p ~/.claude/skills/lightcrawl
 cp skills/lightcrawl/SKILL.md ~/.claude/skills/lightcrawl/SKILL.md
 ```
 
-For other agents (Codex, Gemini, Copilot CLI), point them at the same `skills/lightcrawl/SKILL.md` — it's a plain markdown brief that documents the CLI's commands, JSON contract, and failure-handling rules. No daemon, no MCP server, no transport setup.
+For other agents, point them at `skills/lightcrawl/SKILL.md`. No daemon, no MCP server, no transport setup.
 
 ```bash
-# Sanity check
 .venv/bin/lightcrawl list-backends
 .venv/bin/lightcrawl fetch https://example.com/
 ```
 
 ---
 
-## Fetch vs built-in WebFetch
+## Architecture
 
-The built-in `WebFetch` returns the **entire** page — navigation, sidebar, footer, ads — and silently fails on Cloudflare, JS rendering, or login walls.
+```
+cli.py ─── Router (router.py) ────────► fetch_http.py     L1: curl_cffi + TLS impersonation
+       │                               ► fetch_browser.py  L2: Playwright + stealth
+       │                               ► fetch_browser.py  L3: L2 + saved storage_state
+       │                               ► fetch_pdf.py      PDF: pypdf extraction
+       │                               ► actions.py        Actions: click/write/scroll/...
+       │
+       └── SearchService ─── owns ───► Router (parallel fetches)
+```
 
-Every request goes **HTTP+ → browser → authed browser**, escalating only as far as needed:
-
-| Layer | Technology | What it handles |
-|---|---|---|
-| **L1 HTTP+** | `curl_cffi` with Chrome 120 TLS fingerprint impersonation | Static pages, most docs, news sites |
-| **L2 Browser** | Playwright + `playwright-stealth` + Chromium | JS-rendered SPAs (React, Next.js, Vue), sites that return empty shells over HTTP |
-| **L3 Authed** | Playwright with a saved login `storage_state` | Login-walled pages (X/Twitter, LinkedIn, internal wikis) |
-
-lightcrawl auto-escalates: L1 first, then L2 on Cloudflare blocks / empty SPA shells, then L3 on login-wall detection.
+Every command prints one JSON object on stdout, exits 0 on `ok: true`, 1 on `ok: false`. The skill (`skills/lightcrawl/SKILL.md`) is the canonical reference your agent reads.
 
 ### Token efficiency
 
-lightcrawl's content pipeline auto-scopes to `<main>`/`<article>`, strips invisible elements, and returns structured `headings: [{level, text, line}]`. The `--selector` flag targets exact content areas (e.g. `article.markdown-body` on GitHub); `--output-format text` strips markdown syntax overhead.
+| Site | Built-in WebFetch | lightcrawl default | With `--selector` | Best saving |
+|---|---|---|---|---|
+| **Wikipedia** Python | 58,000 chars | 40,000 | 40,000 | **31%** |
+| **GitHub** psf/requests | 17,500 chars | 8,040 | 2,069 | **90%** |
+| **Django docs** overview | 22,742 chars | 14,695 | 12,867 | **52%** |
+| **Python docs** tutorial | 15,224 chars | 22,160* | — | — |
 
-| Site | Built-in WebFetch | lightcrawl `default` | lightcrawl `--selector` | lightcrawl `--output-format text` | Best saving |
-|---|---|---|---|---|---|
-| **Wikipedia** Python | 58,000 chars | 40,000 | 40,000 | 40,000 | **31%** |
-| **GitHub** psf/requests | 17,500 chars | 8,040 | 2,069 | 1,818 | **90%** |
-| **Django docs** overview | 22,742 chars | 14,695 | 12,867 | 10,972 | **52%** |
-| **Python docs** tutorial | 15,224 chars | 22,160* | 22,160* | 18,034 | — |
-
-\*Python docs returns *more* content via lightcrawl because Playwright executes JS and loads the full sidebar navigation.
-
-### Login sessions
-
-`lightcrawl auth login <profile> <url>` opens a **headed** Chromium window for the user to log in manually. The tool never touches passwords. Once logged in, the session is saved as a named profile bound to the eTLD+1 of the login URL, and reusable via `lightcrawl fetch <url> --profile <name>`.
+\*More content via lightcrawl — Playwright renders JS that loads sidebar navigation.
 
 ---
 
-## Search vs built-in WebSearch & tavily-search
-
-The built-in `WebSearch` returns short snippets with no fetch capability. `tavily-search` is fast and has AI answer synthesis, but runs entirely on Tavily's cloud — no JS rendering, no login sessions, no backend fallback. lightcrawl runs locally with JS rendering, login sessions, and multi-backend failover.
-
-### When lightcrawl helps
-
-| Scenario | Why lightcrawl |
-|---|---|
-| **The answer is behind a login wall** | `lightcrawl search-and-read "<query>" --profile x` — search + authed fetch in one call |
-| **The top result is a JS-rendered SPA** | `search-and-read` automatically renders pages through the Playwright browser pipeline |
-| **You need diverse sources across search indexes** | 2+ backends (Brave + Tavily) with automatic failover; Brave's independent index covers 17 unique domains on a deep search vs Tavily's 10 |
-| **The page is huge — you want headings, not the whole thing** | Every fetched page includes structured `headings` with line numbers; the agent navigates by heading text and greps the dump file by line number |
-| **One backend is rate-limited** | Automatic failover to the next configured backend — no manual intervention |
-
-### Head-to-head: lightcrawl vs tavily-search
-
-Task: "Gather the latest financial information about Anthropic"
-
-| Dimension | lightcrawl | tavily-search |
-|---|---|---|
-| **Search depth (domains)** | **17** unique domains (deep, Brave backend) | 10 unique domains (advanced depth) |
-| **Default snippet quality** | ~219 chars/result | ~148 chars/result |
-| **Login-gated sources** | ✅ `lightcrawl auth login` → authed fetch of X, LinkedIn, private sites | ❌ |
-| **JS rendering** | ✅ Playwright browser executes JS, waits for selectors | ❌ server-side content only |
-| **Raw full-content in one call** | `search-and-read` fetches top N pages (13k chars for 3 pages) | `--include-raw-content` fetches all (240k chars for 10 pages) |
-| **AI answer synthesis** | ❌ | ✅ `--include-answer` gives direct answer |
-| **Structured output** | ✅ headings + line numbers + dump_path | ❌ raw content blob |
-| **Backend redundancy** | ✅ Brave + Tavily, auto-failover on rate-limit | ❌ single Tavily API |
-| **Sovereignty** | Runs on your machine; your IP, your cookies | Runs on Tavily's cloud |
-
-**The trade-off**: For a quick factual answer, tavily's `--include-answer` is faster (one call, 2-6s, AI-synthesized answer). For research that needs **diverse sources**, **login-gated content**, **JS rendering**, or **survives a backend outage** — lightcrawl is the only option that covers all four.
-
-The built-in `TavilyBackend` inside lightcrawl uses Tavily for **search ranking only** (`include_raw_content=false`) — fetching always stays on your machine. If you also want `tavily-extract` / `tavily-crawl` / `tavily-map`, install `tavily-mcp` alongside lightcrawl; they're complementary, not competing.
-
 ## Commands
-
-Every command prints one JSON object on stdout. Exit 0 = `ok: true`, exit 1 = `ok: false`. Full flags: `lightcrawl <subcmd> --help`.
 
 | Command | What it does |
 |---|---|
-| `lightcrawl fetch <url>` | Fetch a URL with auto strategy escalation (L1 HTTP → L2 browser → L3 authed). Returns markdown + headings (level/text/line) + suggested selectors + dump path on overflow. |
-| `lightcrawl search <query>` | Web search returning structured results with rich snippets and a per-result `fetch_hint`. |
-| `lightcrawl search-and-read <query>` | One-shot: search + parallel-fetch top N results. Saves ~30%+ tokens vs doing it manually. |
-| `lightcrawl list-backends` | Report which search backends are configured. |
-| `lightcrawl auth login <profile> <url>` | Open a headed browser for the user to log into a site. Saves the session as a profile. |
-| `lightcrawl auth list` / `lightcrawl auth show <profile>` | List saved profiles (metadata only — never returns cookies). |
-| `lightcrawl auth revoke <profile>` | Delete a profile. |
+| `lightcrawl fetch <url>` | Fetch with auto strategy escalation. Supports `--output-format`, `--selector`, `--actions`, `--mobile`, `--header`, `--include-tag`/`--exclude-tag`, `--remove-base64-images`, screenshot / links / images output. |
+| `lightcrawl search <query>` | Web search with structured results and per-result `fetch_hint`. |
+| `lightcrawl search-and-read <query>` | Search then parallel-fetch top N results. |
+| `lightcrawl list-backends` | Report configured search backends. |
+| `lightcrawl auth login <profile> <url>` | Open headed browser for manual login, save profile. |
+| `lightcrawl auth list` / `show` / `revoke` | Manage saved login profiles. |
 
-The skill at [`skills/lightcrawl/SKILL.md`](skills/lightcrawl/SKILL.md) is the canonical reference your agent reads — flag tables, decision flow, failure-handling, honesty contract.
+Full flags: `lightcrawl <subcmd> --help`.
+
+---
+
+## Search backends
+
+Three pluggable backends ship in-tree. Defaults to **Brave → Serper → Tavily** (first configured).
+
+| Backend | Strength | When to pick |
+|---|---|---|
+| **Brave** | Independent index, free 2k/mo | Default. Most queries. |
+| **Serper** | Google SERP ranking | Brave quota exhausted or Google miss. |
+| **Tavily** | LLM-optimized snippets (200–500 chars) | Long snippets answer ~70% of queries without a fetch. |
+
+Adding a new backend is ~120 lines — see `src/lightcrawl/search/backends/brave.py`.
+
+---
+
+## vs Firecrawl
+
+lightcrawl targets parity with Firecrawl's `/scrape` endpoint — not `/crawl`, `/map`, or LLM-based extraction (deferred to v0.3+).
+
+| Firecrawl `/scrape` param | lightcrawl status |
+|---|---|
+| `url` | ✅ |
+| `formats: [markdown, html, rawHtml, screenshot, links, ..., images]` | ✅ markdown, html, text, screenshot, markdown+screenshot, links, images |
+| `headers` | ✅ `--header KEY=VAL` (repeatable) |
+| `includeTags` / `excludeTags` | ✅ `--include-tag` / `--exclude-tag` |
+| `waitFor` (ms) | ✅ `--wait-for-network-idle` |
+| `actions` (click, write, screenshot, scroll, wait, press) | ✅ `--actions '[...]'` |
+| `mobile` | ✅ `--mobile` (iOS Safari impersonate) |
+| `onlyMainContent` | ✅ default behavior (auto-scopes to `<main>`/`<article>`) |
+| `removeBase64Images` | ✅ `--remove-base64-images` |
+| `location` (country) | deferred to v0.3 |
+| `extract` (LLM-structured) | deferred to v0.5 |
+| `blockAds` | deferred to v0.3 |
+| Cloud-hosted | ❌ — runs locally (your IP, your cookies, no third-party cloud) |
+| Free | ✅ — MIT license, no API keys needed for core fetch |
+
+<div align="center">
+
+**lightcrawl = free, local Firecrawl `/scrape` with anti-bot bypass and login sessions.**
+
+</div>
+
+---
 
 ## Configuration
 
@@ -186,58 +192,29 @@ The skill at [`skills/lightcrawl/SKILL.md`](skills/lightcrawl/SKILL.md) is the c
 
 ```toml
 [ssrf]
-extra_allowlist = ["internal.example.com"]   # explicit allowlist for private hosts
+extra_allowlist = ["internal.example.com"]
 
 [search]
 default_backend = "brave"
 ```
 
-Environment variables:
-
-| Variable | Purpose |
+| Environment variable | Purpose |
 |---|---|
-| `BRAVE_SEARCH_API_KEY` | Brave search API key (free 2k/mo). Default backend |
-| `SERPER_API_KEY` | Serper (Google SERP proxy). Free 2.5k once, ~$0.001/query |
-| `TAVILY_API_KEY` | Tavily (LLM-tuned snippets). Free 1k/mo, ~$0.008/query |
+| `BRAVE_SEARCH_API_KEY` | Brave search API (free 2k/mo) |
+| `SERPER_API_KEY` | Serper Google SERP proxy |
+| `TAVILY_API_KEY` | Tavily LLM-optimized search |
 
-## Search backends
+---
 
-Three pluggable backends ship in-tree. The default is whichever is configured first in this order: **Brave → Serper → Tavily**. Override per-call via `lightcrawl search "<query>" --backend serper`.
+## Security
 
-| Backend | Strength | When to pick |
-|---|---|---|
-| **Brave** | Independent index, free 2k/mo, no ToS risk | Default. Most queries. |
-| **Serper** | Pure Google ranking, cheapest paid tier | When Brave's index misses something a Google user would find, or when Brave quota is exhausted |
-| **Tavily** | LLM-tuned `content` field, snippets often 200–500 chars (highest quality) | When you want to skip the fetch step — long snippets answer ~70% of queries directly |
+- Profiles stored as 0600-permission `storage_state` JSON (Playwright convention).
+- `auth show` returns metadata only — never cookie contents.
+- Profiles bound to login URL's eTLD+1 (a `twitter` profile for `x.com` cannot be used on `attacker.com`).
+- SSRF guard blocks loopback, private nets, cloud metadata IPs.
+- Fetched content treated as data; the skill instructs agents to ignore in-page directives.
 
-Adding a new backend is one file (~120 lines) — see `src/lightcrawl/search/backends/brave.py` as a template.
-
-### Where this fits vs hosted alternatives (e.g. `tavily-mcp`)
-
-`lightcrawl` and Tavily's official `tavily-mcp` are **complementary, not competing** — lightcrawl runs locally as a CLI, `tavily-mcp` runs as a hosted MCP server. Use both if you want their respective strengths:
-
-| | `tavily-mcp` (cloud) | `lightcrawl` (local CLI) |
-|---|---|---|
-| Search ranking + LLM snippets | ✅ best-in-class | ✅ via `TavilyBackend` (snippet-only) |
-| Login-walled pages (X, GitHub private, internal wikis) | ❌ | ✅ `lightcrawl auth login` profiles |
-| JS rendering + anti-bot | partial | ✅ Playwright + stealth + `curl_cffi` |
-| Cookies / IP / browser sovereignty | runs on Tavily's servers | runs on **your** machine |
-| Structured `error_code` + `dump_path` + heading line numbers | ❌ | ✅ |
-
-`lightcrawl`'s built-in `TavilyBackend` deliberately uses Tavily for **search ranking only** (`include_raw_content=false`) — fetching always stays on your machine, which is the whole point of the local runtime. If you want Tavily's `tavily-extract` / `tavily-crawl` / `tavily-map` capabilities too, install `tavily-mcp` alongside lightcrawl.
-
-## Security model
-
-- Profiles are stored as **plaintext `storage_state` JSON with mode `0600`** — same convention Playwright uses by default. The threat model is "another local user" (where 0600 is sufficient) and not "malware running as the same user" (where keyring + AES wouldn't help anyway). See [CONTRIBUTING.md](CONTRIBUTING.md).
-- The model never receives cookie contents — `lightcrawl auth show` returns metadata only.
-- `lightcrawl auth login` always uses a **headed** browser. The user types passwords and 2FA themselves; the CLI only calls `context.storage_state()` after a success signal.
-- Profiles are bound to the **eTLD+1** of the login URL. A `twitter` profile bound to `x.com` cannot be used to fetch `attacker.com/x.com/...`.
-- All requests pass an SSRF guard that blocks loopback, private nets, and cloud metadata IPs by default.
-- Fetched content is treated as data, not instructions; the skill instructs the agent to ignore in-page directives.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture, development setup, benchmarks, and contribution guidelines.
+---
 
 ## License
 
