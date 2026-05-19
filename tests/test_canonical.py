@@ -151,3 +151,63 @@ def test_url_hash_separator_prevents_collision():
     h1 = url_hash("https://x.com/a", profile="b")
     h2 = url_hash("https://x.com/ab", profile="")
     assert h1 != h2
+
+
+# ----- edge cases ------------------------------------------------------------
+
+def test_ipv4_literal_host():
+    assert canonicalize_url("http://127.0.0.1/p") == "http://127.0.0.1/p"
+
+
+def test_ipv4_literal_with_port():
+    assert canonicalize_url("http://127.0.0.1:8080/p") == "http://127.0.0.1:8080/p"
+
+
+def test_ipv6_literal_host():
+    assert canonicalize_url("http://[::1]/p") == "http://[::1]/p"
+
+
+def test_ipv6_literal_with_port():
+    assert canonicalize_url("http://[::1]:8080/p") == "http://[::1]:8080/p"
+
+
+def test_ipv6_default_port_stripped():
+    # urlparse should expose port=80; we strip it because http default is 80.
+    assert canonicalize_url("http://[::1]:80/p") == "http://[::1]/p"
+
+
+def test_mixed_case_scheme_normalized():
+    assert canonicalize_url("HTTP://Example.com:80/") == "http://example.com/"
+
+
+def test_canonicalize_is_idempotent():
+    # canonicalize(canonicalize(u)) == canonicalize(u). Critical property:
+    # otherwise cache key would drift on re-canonicalization.
+    samples = [
+        "HTTPS://Example.COM:443/Foo/?utm_source=x&b=2&a=1#frag",
+        "http://[::1]:80/",
+        "https://example.com/p?flag&other=1",
+        "https://example.com/foo/",
+    ]
+    for u in samples:
+        once = canonicalize_url(u)
+        twice = canonicalize_url(once)
+        assert once == twice, f"non-idempotent: {u!r} -> {once!r} -> {twice!r}"
+
+
+def test_url_without_path_idempotent():
+    # "https://example.com" has empty path; first pass adds "/", second
+    # must not double it or strip it.
+    assert canonicalize_url(canonicalize_url("https://example.com")) == "https://example.com/"
+
+
+def test_query_only_url():
+    # No path, only query. Canonicalize path to "/" and keep query.
+    assert canonicalize_url("https://example.com?a=1") == "https://example.com/?a=1"
+
+
+def test_userinfo_in_url_is_dropped():
+    # urlparse keeps userinfo in netloc; parsed.hostname extracts host only.
+    # Our reconstruction uses hostname, effectively dropping userinfo.
+    # This is intentional: userinfo is sensitive and rarely correct in fetched URLs.
+    assert canonicalize_url("https://user:pass@example.com/p") == "https://example.com/p"
