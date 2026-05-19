@@ -1,8 +1,8 @@
 <div align="center">
 
-# Lightcrawl
+# lightcrawl
 
-**Lightcrawl is a drop-in upgrade for WebFetch and WebSearch in any agent (Claude Code, Codex, Gemini CLI, Copilot CLI, etc.). It adds anti-bot bypass, JS rendering, saved login sessions, and multi-backend search — plus a content pipeline that cuts 30–90% of wasted tokens — all in a local CLI the agent invokes through its shell.**
+**lightcrawl is a drop-in upgrade for WebFetch and WebSearch in any agent (Claude Code, Codex, Gemini CLI, Copilot CLI, etc.). It adds anti-bot bypass, JS rendering, saved login sessions, and multi-backend search — plus a content pipeline that cuts 30–90% of wasted tokens — all in a local CLI the agent invokes through its shell.**
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -15,9 +15,9 @@
 
 ---
 
-## Lightcrawl
+## lightcrawl
 
-Lightcrawl is a local CLI plus a one-file skill that upgrades your agent's ability to fetch and search the web. It supports:
+lightcrawl is a local CLI plus a one-file skill that upgrades your agent's ability to fetch and search the web. It supports:
 
 - ✅ Anti-bot bypass — survives Cloudflare, TLS fingerprinting, and browser challenges
 - ✅ JavaScript rendering — executes JS in a real browser for SPAs (React, Next.js, Vue)
@@ -46,7 +46,7 @@ Agents like Claude Code ship with basic HTTP fetch and web search. When they wor
 
 ---
 
-## With Lightcrawl
+## With lightcrawl
 
 - ✅ **Fetch anything.** Cloudflare blocks, JS SPAs, login walls — three-layer escalation handles them all
 - ✅ **Save 30–90% tokens.** Content pipeline auto-scopes to `<main>`/`<article>`, strips noise before it hits your context. Headings with line numbers let you grep dumps by section
@@ -59,7 +59,7 @@ Agents like Claude Code ship with basic HTTP fetch and web search. When they wor
 ## Quick start
 
 ```bash
-git clone https://github.com/yaoyi1222/Lightcrawl.git
+git clone https://github.com/yaoyi1222/lightcrawl.git
 cd lightcrawl
 python3.11 -m venv .venv
 .venv/bin/pip install -e ".[dev,bench]"
@@ -75,7 +75,7 @@ export TAVILY_API_KEY=...
 
 ### Wire it into your agent
 
-Lightcrawl is a normal CLI on your `PATH` — every command prints one JSON object on stdout and exits 0 on success, 1 on failure. Drop the skill file into your agent so it knows when to reach for the CLI:
+lightcrawl is a normal CLI on your `PATH` — every command prints one JSON object on stdout and exits 0 on success, 1 on failure. Drop the skill file into your agent so it knows when to reach for the CLI:
 
 ```bash
 # Claude Code (per-project)
@@ -109,20 +109,20 @@ Every request goes **HTTP+ → browser → authed browser**, escalating only as 
 | **L2 Browser** | Playwright + `playwright-stealth` + Chromium | JS-rendered SPAs (React, Next.js, Vue), sites that return empty shells over HTTP |
 | **L3 Authed** | Playwright with a saved login `storage_state` | Login-walled pages (X/Twitter, LinkedIn, internal wikis) |
 
-Lightcrawl auto-escalates: L1 first, then L2 on Cloudflare blocks / empty SPA shells, then L3 on login-wall detection.
+lightcrawl auto-escalates: L1 first, then L2 on Cloudflare blocks / empty SPA shells, then L3 on login-wall detection.
 
 ### Token efficiency
 
-Lightcrawl's content pipeline auto-scopes to `<main>`/`<article>`, strips invisible elements, and returns structured `headings: [{level, text, line}]`. The `--selector` flag targets exact content areas (e.g. `article.markdown-body` on GitHub); `--output-format text` strips markdown syntax overhead.
+lightcrawl's content pipeline auto-scopes to `<main>`/`<article>`, strips invisible elements, and returns structured `headings: [{level, text, line}]`. The `--selector` flag targets exact content areas (e.g. `article.markdown-body` on GitHub); `--output-format text` strips markdown syntax overhead.
 
-| Site | Built-in WebFetch | Lightcrawl `default` | Lightcrawl `--selector` | Lightcrawl `--output-format text` | Best saving |
+| Site | Built-in WebFetch | lightcrawl `default` | lightcrawl `--selector` | lightcrawl `--output-format text` | Best saving |
 |---|---|---|---|---|---|
 | **Wikipedia** Python | 58,000 chars | 40,000 | 40,000 | 40,000 | **31%** |
 | **GitHub** psf/requests | 17,500 chars | 8,040 | 2,069 | 1,818 | **90%** |
 | **Django docs** overview | 22,742 chars | 14,695 | 12,867 | 10,972 | **52%** |
 | **Python docs** tutorial | 15,224 chars | 22,160* | 22,160* | 18,034 | — |
 
-\*Python docs returns *more* content via Lightcrawl because Playwright executes JS and loads the full sidebar navigation.
+\*Python docs returns *more* content via lightcrawl because Playwright executes JS and loads the full sidebar navigation.
 
 ### Login sessions
 
@@ -132,11 +132,11 @@ Lightcrawl's content pipeline auto-scopes to `<main>`/`<article>`, strips invisi
 
 ## Search vs built-in WebSearch & tavily-search
 
-The built-in `WebSearch` returns short snippets with no fetch capability. `tavily-search` is fast and has AI answer synthesis, but runs entirely on Tavily's cloud — no JS rendering, no login sessions, no backend fallback. Lightcrawl runs locally with JS rendering, login sessions, and multi-backend failover.
+The built-in `WebSearch` returns short snippets with no fetch capability. `tavily-search` is fast and has AI answer synthesis, but runs entirely on Tavily's cloud — no JS rendering, no login sessions, no backend fallback. lightcrawl runs locally with JS rendering, login sessions, and multi-backend failover.
 
-### When Lightcrawl helps
+### When lightcrawl helps
 
-| Scenario | Why Lightcrawl |
+| Scenario | Why lightcrawl |
 |---|---|
 | **The answer is behind a login wall** | `lightcrawl search-and-read "<query>" --profile x` — search + authed fetch in one call |
 | **The top result is a JS-rendered SPA** | `search-and-read` automatically renders pages through the Playwright browser pipeline |
@@ -144,11 +144,11 @@ The built-in `WebSearch` returns short snippets with no fetch capability. `tavil
 | **The page is huge — you want headings, not the whole thing** | Every fetched page includes structured `headings` with line numbers; the agent navigates by heading text and greps the dump file by line number |
 | **One backend is rate-limited** | Automatic failover to the next configured backend — no manual intervention |
 
-### Head-to-head: Lightcrawl vs tavily-search
+### Head-to-head: lightcrawl vs tavily-search
 
 Task: "Gather the latest financial information about Anthropic"
 
-| Dimension | Lightcrawl | tavily-search |
+| Dimension | lightcrawl | tavily-search |
 |---|---|---|
 | **Search depth (domains)** | **17** unique domains (deep, Brave backend) | 10 unique domains (advanced depth) |
 | **Default snippet quality** | ~219 chars/result | ~148 chars/result |
@@ -160,9 +160,9 @@ Task: "Gather the latest financial information about Anthropic"
 | **Backend redundancy** | ✅ Brave + Tavily, auto-failover on rate-limit | ❌ single Tavily API |
 | **Sovereignty** | Runs on your machine; your IP, your cookies | Runs on Tavily's cloud |
 
-**The trade-off**: For a quick factual answer, tavily's `--include-answer` is faster (one call, 2-6s, AI-synthesized answer). For research that needs **diverse sources**, **login-gated content**, **JS rendering**, or **survives a backend outage** — Lightcrawl is the only option that covers all four.
+**The trade-off**: For a quick factual answer, tavily's `--include-answer` is faster (one call, 2-6s, AI-synthesized answer). For research that needs **diverse sources**, **login-gated content**, **JS rendering**, or **survives a backend outage** — lightcrawl is the only option that covers all four.
 
-The built-in `TavilyBackend` inside Lightcrawl uses Tavily for **search ranking only** (`include_raw_content=false`) — fetching always stays on your machine. If you also want `tavily-extract` / `tavily-crawl` / `tavily-map`, install `tavily-mcp` alongside Lightcrawl; they're complementary, not competing.
+The built-in `TavilyBackend` inside lightcrawl uses Tavily for **search ranking only** (`include_raw_content=false`) — fetching always stays on your machine. If you also want `tavily-extract` / `tavily-crawl` / `tavily-map`, install `tavily-mcp` alongside lightcrawl; they're complementary, not competing.
 
 ## Commands
 
@@ -214,9 +214,9 @@ Adding a new backend is one file (~120 lines) — see `src/lightcrawl/search/bac
 
 ### Where this fits vs hosted alternatives (e.g. `tavily-mcp`)
 
-`Lightcrawl` and Tavily's official `tavily-mcp` are **complementary, not competing** — Lightcrawl runs locally as a CLI, `tavily-mcp` runs as a hosted MCP server. Use both if you want their respective strengths:
+`lightcrawl` and Tavily's official `tavily-mcp` are **complementary, not competing** — lightcrawl runs locally as a CLI, `tavily-mcp` runs as a hosted MCP server. Use both if you want their respective strengths:
 
-| | `tavily-mcp` (cloud) | `Lightcrawl` (local CLI) |
+| | `tavily-mcp` (cloud) | `lightcrawl` (local CLI) |
 |---|---|---|
 | Search ranking + LLM snippets | ✅ best-in-class | ✅ via `TavilyBackend` (snippet-only) |
 | Login-walled pages (X, GitHub private, internal wikis) | ❌ | ✅ `lightcrawl auth login` profiles |
@@ -224,7 +224,7 @@ Adding a new backend is one file (~120 lines) — see `src/lightcrawl/search/bac
 | Cookies / IP / browser sovereignty | runs on Tavily's servers | runs on **your** machine |
 | Structured `error_code` + `dump_path` + heading line numbers | ❌ | ✅ |
 
-`Lightcrawl`'s built-in `TavilyBackend` deliberately uses Tavily for **search ranking only** (`include_raw_content=false`) — fetching always stays on your machine, which is the whole point of the local runtime. If you want Tavily's `tavily-extract` / `tavily-crawl` / `tavily-map` capabilities too, install `tavily-mcp` alongside Lightcrawl.
+`lightcrawl`'s built-in `TavilyBackend` deliberately uses Tavily for **search ranking only** (`include_raw_content=false`) — fetching always stays on your machine, which is the whole point of the local runtime. If you want Tavily's `tavily-extract` / `tavily-crawl` / `tavily-map` capabilities too, install `tavily-mcp` alongside lightcrawl.
 
 ## Security model
 
