@@ -53,9 +53,11 @@ class FetchRequest:
     # alone is itself a bot signal); L2 uses Playwright's "iPhone 13"
     # device descriptor.
     mobile: bool = False
-    # Default False preserves byte-identical v0.1 responses. v0.3 plans
-    # to flip the default to True with a README announcement.
-    remove_base64_images: bool = False
+    # v0.3 default flip: was False in v0.2 (byte-identical to v0.1).
+    # Now True because base64 data: URIs explode token cost and cache
+    # size while contributing nothing to LLM consumption. External <img>
+    # tags survive into markdown. See v0.3-design.md §6.
+    remove_base64_images: bool = True
     # v0.2 PR 5 — declarative browser actions. Non-empty forces L2 (browser).
     # Parse from JSON dicts via actions.parse_actions() before setting.
     actions: list = field(default_factory=list)

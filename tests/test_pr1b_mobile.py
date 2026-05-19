@@ -312,15 +312,16 @@ def test_remove_base64_images_strips_data_uri_keeps_external():
     assert "Pictures" in out.markdown                # body intact
 
 
-def test_default_strips_all_images_v01_behavior():
-    """Default `remove_base64_images=False` keeps the v0.1 behavior of
-    stripping every `<img>` (data: URIs and external alike). This locks
-    backwards-compat."""
+def test_default_v03_keeps_external_strips_only_base64():
+    """v0.3 default `remove_base64_images=True`: data: URIs are stripped,
+    external <img> tags survive into markdown. This replaces the v0.2
+    `test_default_strips_all_images_v01_behavior` test — same input HTML,
+    inverted expectations to match the new default."""
     out = content_mod.html_to_markdown(_HTML_WITH_IMAGES)
-    assert "iVBORw0K" not in out.markdown
-    assert "data:image" not in out.markdown
-    assert "example.com/logo.png" not in out.markdown
-    assert "Pictures" in out.markdown
+    assert "iVBORw0K" not in out.markdown            # base64 payload gone
+    assert "data:image" not in out.markdown          # no data: URI
+    assert "example.com/logo.png" in out.markdown    # external image survived
+    assert "Pictures" in out.markdown                # body intact
 
 
 def test_keep_images_preserves_picture_source_wrapper_so_img_survives():
@@ -352,10 +353,11 @@ def test_keep_images_preserves_picture_source_wrapper_so_img_survives():
     assert "body text" in out.markdown
 
 
-def test_default_behavior_strips_picture_source_img_together():
-    """Mirror: default (`remove_base64_images=False`) still strips every
-    media element — `<picture>`, `<source>`, `<img>`, `<svg>` all gone.
-    Locks v0.1 compat."""
+def test_default_v03_keeps_picture_source_img():
+    """v0.3 default keeps the external <img> even when nested inside
+    <picture><source>...</picture>. <svg> remains always stripped (it's
+    in _REMOVE_TAGS regardless of the flag). Replaces v0.2's
+    `test_default_behavior_strips_picture_source_img_together`."""
     html = (
         "<html><body>"
         "<picture>"
@@ -367,11 +369,10 @@ def test_default_behavior_strips_picture_source_img_together():
         "heuristic and produce stable markdown.</p>"
         "</body></html>"
     )
-    out = content_mod.html_to_markdown(html)  # default: remove_base64_images=False
-    assert "e.com/x.png" not in out.markdown
-    assert "x.webp" not in out.markdown
-    assert "M0,0" not in out.markdown
-    assert "body text" in out.markdown
+    out = content_mod.html_to_markdown(html)  # default: True in v0.3
+    assert "e.com/x.png" in out.markdown      # external <img> survives
+    assert "M0,0" not in out.markdown         # <svg> always stripped
+    assert "body text" in out.markdown        # body intact
 
 
 def test_drop_base64_images_helper_two_pass():
