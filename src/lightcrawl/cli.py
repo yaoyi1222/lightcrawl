@@ -175,7 +175,10 @@ async def _run_fetch(args: argparse.Namespace) -> int:
     if raw_actions:
         parsed_actions = _parse_actions(raw_actions)
 
-    req = FetchRequest(
+    # remove_base64_images uses BooleanOptionalAction (default=None) so an
+    # absent flag yields None and falls through to FetchRequest's dataclass
+    # default. Passing False here would override the v0.3 default of True.
+    fetch_kwargs = dict(
         url=args.url,
         strategy=args.strategy,
         profile=args.profile,
@@ -188,9 +191,12 @@ async def _run_fetch(args: argparse.Namespace) -> int:
         include_tags=_clean_tags(getattr(args, "include_tags", None)),
         exclude_tags=_clean_tags(getattr(args, "exclude_tags", None)),
         mobile=bool(getattr(args, "mobile", False)),
-        remove_base64_images=bool(getattr(args, "remove_base64_images", False)),
         actions=parsed_actions,
     )
+    rbi = getattr(args, "remove_base64_images", None)
+    if rbi is not None:
+        fetch_kwargs["remove_base64_images"] = bool(rbi)
+    req = FetchRequest(**fetch_kwargs)
     router = Router()
     try:
         result = await router.fetch(req)
@@ -369,11 +375,13 @@ def _add_fetch_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--remove-base64-images",
         dest="remove_base64_images",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help=(
             "Drop <img> elements whose src is a data: URI before extraction. "
-            "Non-base64 images then survive into markdown (default behavior "
-            "strips all <img>). v0.3 plans to make this the default."
+            "Default in v0.3 is ON: data: URIs are dropped while external "
+            "<img> tags survive into markdown. Use --no-remove-base64-images "
+            "to restore the v0.2 behavior of stripping every <img>."
         ),
     )
     p.add_argument(

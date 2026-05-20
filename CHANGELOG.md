@@ -13,12 +13,27 @@ for the full plan. This entry is updated PR-by-PR.
 ### Breaking changes
 
 - **`remove_base64_images` default flipped from `False` to `True`.**
-  Affects both `FetchRequest.remove_base64_images` and the
-  `html_to_markdown(remove_base64_images=...)` function-level default.
+  Affects `FetchRequest.remove_base64_images`, the
+  `html_to_markdown(remove_base64_images=...)` function-level default,
+  and the `lightcrawl fetch` CLI subcommand (which now honors the new
+  dataclass default when the flag is absent — see Fixed below).
   v0.2 stripped every `<img>` by default for byte-identical v0.1 output;
   v0.3 strips only `data:` URI images, letting external `<img>` tags
   flow into markdown. To restore v0.2 behavior, pass
-  `remove_base64_images=False` explicitly.
+  `remove_base64_images=False` programmatically or use the new
+  `--no-remove-base64-images` CLI flag.
+
+### Fixed
+
+- CLI now honors the new `remove_base64_images=True` default. The v0.3
+  PR 1 initial commit (`bcf0ec2`) flipped the `FetchRequest` dataclass
+  default but `cli.py` was still passing `args.remove_base64_images`
+  (an argparse `store_true` False on absence) straight through,
+  silently overriding the new default. The `--remove-base64-images`
+  flag now uses `argparse.BooleanOptionalAction`; absence means
+  "fall through to dataclass default", explicit `--remove-base64-images`
+  forces True, and the auto-generated `--no-remove-base64-images`
+  forces False.
 
 ### Added
 
