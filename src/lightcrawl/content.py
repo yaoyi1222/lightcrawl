@@ -547,7 +547,7 @@ def html_to_markdown(
     url: str | None = None,
     include_tags: tuple[str, ...] | list[str] = (),
     exclude_tags: tuple[str, ...] | list[str] = (),
-    remove_base64_images: bool = False,
+    remove_base64_images: bool = True,  # v0.3 default flip; see router.FetchRequest
 ) -> ExtractedContent:
     """Extract title + main content. If selector given, restrict to that subtree.
     If url given, look up domain-specific hints (selector + actionable

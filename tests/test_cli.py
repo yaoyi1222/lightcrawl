@@ -130,6 +130,52 @@ def test_fetch_passes_wait_for_selector_through():
     assert captured["selector"] == "article"
 
 
+def _capture_fetch_request(argv: list[str]) -> "object":
+    """Run the CLI fetch with Router patched; return the FetchRequest the
+    CLI built. Shared helper for the three remove_base64_images cases below."""
+    captured = {}
+
+    async def capture(req):
+        captured["req"] = req
+        return {"ok": True, "url": req.url, "final_url": req.url,
+                "strategy_used": "http", "title": "", "content": "",
+                "content_truncated": False, "dump_path": None,
+                "metadata": {}, "attempts": [], "headings": []}
+
+    with patch("lightcrawl.cli.Router") as RouterCls:
+        RouterCls.return_value.fetch = capture
+        RouterCls.return_value.close = AsyncMock()
+        rc, _ = _run(argv)
+    assert rc == 0
+    return captured["req"]
+
+
+def test_fetch_no_flag_uses_v03_default_true():
+    """Regression for the v0.3 CLI bug: no flag must let FetchRequest's
+    dataclass default (True) take effect, not be overridden by argparse
+    store_true False. Failure mode: CLI users without the flag silently
+    get v0.2 behavior, defeating the breaking change."""
+    req = _capture_fetch_request(["fetch", "https://example.com/"])
+    assert req.remove_base64_images is True
+
+
+def test_fetch_explicit_flag_sets_true():
+    req = _capture_fetch_request([
+        "fetch", "https://example.com/", "--remove-base64-images",
+    ])
+    assert req.remove_base64_images is True
+
+
+def test_fetch_no_flag_negation_sets_false():
+    """BooleanOptionalAction auto-generates --no-remove-base64-images.
+    Lets users explicitly restore v0.2 behavior — exactly the migration
+    path documented in CHANGELOG.md for the breaking default flip."""
+    req = _capture_fetch_request([
+        "fetch", "https://example.com/", "--no-remove-base64-images",
+    ])
+    assert req.remove_base64_images is False
+
+
 # -- search -----------------------------------------------------------------
 
 
