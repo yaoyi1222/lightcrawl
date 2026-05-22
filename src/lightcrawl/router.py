@@ -531,7 +531,7 @@ class Router:
                     "`--strategy browser` to render it and grab the real "
                     "PDF link (or screenshot the inline body)."
                 )
-            return _failure(req.url, e.code, e.detail, attempts, suggestions)
+            return _failure(req.url, e.code, e.detail, attempts, suggestions=suggestions)
 
         attempts.append(Attempt("pdf", "200"))
         inline, truncated, dump_path = content_mod.maybe_dump(
