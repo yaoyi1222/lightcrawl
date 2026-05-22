@@ -296,6 +296,46 @@ async def test_pdf_router_integration_failure(router):
     assert out["error_code"] == ErrorCode.PDF_NO_TEXT_LAYER.value
 
 
+async def test_pdf_redirect_to_html_suggests_browser_strategy(router):
+    """Closes #40. SSE / 10jqka / Sina announcement PDFs commonly redirect
+    to an HTML download/landing page. fetch_pdf raises
+    UNSUPPORTED_CONTENT_TYPE (correct — the body isn't a PDF), but the
+    bare error gives the user no next step. Surface a suggestion that
+    points at `--strategy browser`, which can render the landing page
+    so the user can grab the real PDF URL or screenshot the inline body."""
+    def fake_fetch_pdf(*args, **kwargs):
+        raise FetchError(
+            ErrorCode.UNSUPPORTED_CONTENT_TYPE,
+            "expected application/pdf or %PDF magic bytes; got content-type='text/html; charset=utf-8'",
+        )
+
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_pdf.fetch_pdf", side_effect=fake_fetch_pdf):
+        out = await router.fetch(
+            FetchRequest(url="https://static.sse.com.cn/disclosure/600380_UYT2.pdf")
+        )
+
+    assert out["ok"] is False
+    assert out["error_code"] == ErrorCode.UNSUPPORTED_CONTENT_TYPE.value
+    assert any("--strategy browser" in s for s in out["suggestions"]), out["suggestions"]
+
+
+async def test_pdf_no_text_layer_does_not_get_browser_suggestion(router):
+    """Browser strategy doesn't help a scanned PDF — surfacing the hint there
+    would be misleading. Limit the suggestion to the redirect-to-HTML case."""
+    def fake_fetch_pdf(*args, **kwargs):
+        raise FetchError(ErrorCode.PDF_NO_TEXT_LAYER, "scanned PDF, no text layer")
+
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_pdf.fetch_pdf", side_effect=fake_fetch_pdf):
+        out = await router.fetch(
+            FetchRequest(url="https://example.com/scan.pdf")
+        )
+
+    assert out["ok"] is False
+    assert not any("--strategy browser" in s for s in out["suggestions"])
+
+
 async def test_non_pdf_binaries_still_rejected(router):
     """PR 4 only removes .pdf from the binary list; .zip still rejected."""
     out = await router.fetch(FetchRequest(url="https://example.com/archive.zip"))
