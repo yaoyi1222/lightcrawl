@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import os
 from datetime import datetime, timezone
 
 import httpx
 
+from ..config import resolve_api_key
 from ..types import SearchResult
 from .base import BackendError
 
@@ -50,7 +50,7 @@ class BraveBackend:
     cost_per_call_usd = 0.005  # rough per-query estimate at the paid tier
 
     def __init__(self, api_key: str | None = None) -> None:
-        self.api_key = api_key or os.environ.get("BRAVE_SEARCH_API_KEY")
+        self.api_key = resolve_api_key("BRAVE_SEARCH_API_KEY", "brave", explicit=api_key)
 
     def configured(self) -> bool:
         return bool(self.api_key)

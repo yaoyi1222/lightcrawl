@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import httpx
 import pytest
@@ -213,6 +214,9 @@ async def test_tavily_time_range_after_only_maps_to_days():
     assert captured["body"].get("days") == 10
 
 
-async def test_tavily_configured_state():
+async def test_tavily_configured_state(monkeypatch, tmp_path):
     assert TavilyBackend(api_key="x").configured() is True
+    # When no explicit key is given and no env/config files exist, configured() is False
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
     assert TavilyBackend(api_key=None).configured() is False
