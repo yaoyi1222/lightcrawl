@@ -262,6 +262,31 @@ def test_search_and_read_passes_args_through():
     assert req.timeout_ms == 90_000
 
 
+def test_search_and_read_accepts_max_results_alias():
+    """`--max-results` is the conventional CLI flag name and was the most
+    common wrong guess users made (issue #42). Accept it as an alias for
+    `--read-top-n` so the command isn't gated on knowing the v0.2 name."""
+    captured = {}
+
+    async def capture(req):
+        captured["req"] = req
+        return {
+            "ok": True, "query": req.query,
+            "search_results": [], "fetched_pages": [], "fetch_failures": [],
+            "metadata": {"search_elapsed_ms": 1, "fetch_elapsed_ms": 1,
+                         "total_tokens_returned": 0},
+        }
+
+    with patch("lightcrawl.cli.SearchService") as SvcCls:
+        SvcCls.return_value.search_and_read = capture
+        SvcCls.return_value.close = AsyncMock()
+        rc, _ = _run([
+            "search-and-read", "what is X", "--max-results", "7",
+        ])
+    assert rc == 0
+    assert captured["req"].read_top_n == 7
+
+
 # -- auth (existing commands; smoke test the entry point still works) -------
 
 

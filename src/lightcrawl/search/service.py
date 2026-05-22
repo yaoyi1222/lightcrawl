@@ -80,11 +80,25 @@ class SearchService:
         out = []
         for b in self._backends.values():
             configured = getattr(b, "configured", lambda: True)()
-            out.append({
+            entry: dict = {
                 "name": b.name,
                 "configured": configured,
                 "cost_per_call_usd": b.cost_per_call_usd,
-            })
+            }
+            # Surface the config_guide unconditionally so a user with one
+            # backend already configured still sees how to enable the
+            # others (e.g. for failover). The fields mirror exactly what
+            # `resolve_api_key` looks at — env var, config-file path, and
+            # the signup URL — so the answer here matches reality. (#36)
+            env_var = getattr(b, "env_var", None)
+            signup_url = getattr(b, "signup_url", None)
+            if env_var and signup_url:
+                entry["config_guide"] = {
+                    "env_var": env_var,
+                    "signup_url": signup_url,
+                    "config_file": "~/.lightcrawl/config.json",
+                }
+            out.append(entry)
         return out
 
     def _pick_backend(self, name: str | None) -> tuple[str, Backend]:
@@ -319,7 +333,7 @@ class SearchService:
                     "error_detail": fout.get("error_detail"),
                 })
 
-        return {
+        resp: dict = {
             "ok": True,
             "query": req.query,
             "search_results": results,
@@ -331,6 +345,18 @@ class SearchService:
                 "total_tokens_returned": sum(p["tokens_returned"] for p in fetched),
             },
         }
+        # Surface truncation at the top level so an agent consuming several
+        # pages at once doesn't have to scan every fetched_pages[*] entry
+        # for content_truncated=True. Per-page dump_path stays the source
+        # of truth — the warning just points the agent at it. (#43)
+        truncated_count = sum(1 for p in fetched if p["content_truncated"])
+        if truncated_count:
+            resp["truncation_warning"] = (
+                f"{truncated_count} of {len(fetched)} fetched pages exceeded "
+                f"the token budget. Full content saved to dump files — see "
+                f"the dump_path field on each truncated page."
+            )
+        return resp
 
     def fetch_url_within_search(
         self, *, url: str, allowed_urls: set[str]
