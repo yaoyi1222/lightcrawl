@@ -79,6 +79,8 @@ def _parse_age_days(date_str: str | None) -> int | None:
 class SerperBackend:
     name = "serper"
     cost_per_call_usd = 0.001  # ~$50 for 50k queries on the standard tier
+    env_var = "SERPER_API_KEY"
+    signup_url = "https://serper.dev/api-key"
 
     def __init__(
         self,
@@ -86,7 +88,7 @@ class SerperBackend:
         *,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
-        self.api_key = resolve_api_key("SERPER_API_KEY", "serper", explicit=api_key)
+        self.api_key = resolve_api_key(self.env_var, "serper", explicit=api_key)
         self._transport = transport
 
     def configured(self) -> bool:

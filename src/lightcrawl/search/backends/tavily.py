@@ -44,6 +44,8 @@ def _parse_published_age_days(published_iso: str | None) -> int | None:
 class TavilyBackend:
     name = "tavily"
     cost_per_call_usd = 0.008  # basic depth, paid tier reference
+    env_var = "TAVILY_API_KEY"
+    signup_url = "https://app.tavily.com/home"
 
     def __init__(
         self,
@@ -51,7 +53,7 @@ class TavilyBackend:
         *,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
-        self.api_key = resolve_api_key("TAVILY_API_KEY", "tavily", explicit=api_key)
+        self.api_key = resolve_api_key(self.env_var, "tavily", explicit=api_key)
         self._transport = transport
 
     def configured(self) -> bool:
