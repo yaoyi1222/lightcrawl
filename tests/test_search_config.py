@@ -8,11 +8,26 @@ from lightcrawl.search.config import resolve_api_key
 
 
 def test_explicit_wins(tmp_path: Path, monkeypatch):
-    """Explicit api_key parameter takes priority over every other source."""
+    """Explicit api_key parameter takes priority over every other source.
+
+    Populate all three lower-priority sources (env, ~/.lightcrawl, ~/.tavily)
+    and patch Path.home so they would actually be read — only then does a
+    pass with explicit="..." prove the priority order rather than just
+    happening to land on an empty disk.
+    """
     monkeypatch.setenv("TAVILY_API_KEY", "env-key")
-    tvly_cfg = tmp_path / "tavily" / "config.json"
-    tvly_cfg.parent.mkdir()
-    tvly_cfg.write_text(json.dumps({"api_key": "tvly-cli-key"}))
+
+    lc_dir = tmp_path / ".lightcrawl"
+    lc_dir.mkdir()
+    (lc_dir / "config.json").write_text(
+        json.dumps({"backends": {"tavily": {"api_key": "lc-key"}}})
+    )
+
+    tvly_dir = tmp_path / ".tavily"
+    tvly_dir.mkdir()
+    (tvly_dir / "config.json").write_text(json.dumps({"api_key": "tvly-cli-key"}))
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
     result = resolve_api_key("TAVILY_API_KEY", "tavily", explicit="explicit-key")
     assert result == "explicit-key"

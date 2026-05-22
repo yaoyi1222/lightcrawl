@@ -378,6 +378,9 @@ def _suggest_on_failure(code: str, all_backends: list[str]) -> list[str]:
         return [
             "set one of: BRAVE_SEARCH_API_KEY (free 2k/mo), "
             "SERPER_API_KEY (free 2.5k once), TAVILY_API_KEY (free 1k/mo)",
+            "or store a key in ~/.lightcrawl/config.json "
+            '({"backends": {"<name>": {"api_key": "..."}}}); '
+            "for tavily, `tvly login` writes ~/.tavily/config.json automatically",
         ]
     if code == "TIMEOUT":
         return ["increase timeout_ms", "check network"]
