@@ -516,7 +516,22 @@ class Router:
             return _failure(req.url, ErrorCode.TIMEOUT, "PDF download timed out", attempts)
         except FetchError as e:
             attempts.append(Attempt("pdf", e.code.value.lower()))
-            return _failure(req.url, e.code, e.detail, attempts)
+            # Specific guidance for the SSE / 10jqka / Sina pattern where a
+            # .pdf URL redirects to an HTML download landing page. The L1-only
+            # PDF route can't follow that intermediary, but L2 can render it
+            # so the user (or an agent) can extract the real PDF link. Only
+            # attach when the failure mode is content-type mismatch — for
+            # PDF_NO_TEXT_LAYER / TIMEOUT / PDF_FETCH_BLOCKED the browser
+            # strategy wouldn't help. (#40)
+            suggestions: list[str] = []
+            if e.code == ErrorCode.UNSUPPORTED_CONTENT_TYPE:
+                suggestions.append(
+                    "this URL was served as HTML, not PDF — likely a "
+                    "download intermediary page. Retry with "
+                    "`--strategy browser` to render it and grab the real "
+                    "PDF link (or screenshot the inline body)."
+                )
+            return _failure(req.url, e.code, e.detail, attempts, suggestions)
 
         attempts.append(Attempt("pdf", "200"))
         inline, truncated, dump_path = content_mod.maybe_dump(
