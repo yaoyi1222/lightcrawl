@@ -319,7 +319,7 @@ class SearchService:
                     "error_detail": fout.get("error_detail"),
                 })
 
-        return {
+        resp: dict = {
             "ok": True,
             "query": req.query,
             "search_results": results,
@@ -331,6 +331,18 @@ class SearchService:
                 "total_tokens_returned": sum(p["tokens_returned"] for p in fetched),
             },
         }
+        # Surface truncation at the top level so an agent consuming several
+        # pages at once doesn't have to scan every fetched_pages[*] entry
+        # for content_truncated=True. Per-page dump_path stays the source
+        # of truth — the warning just points the agent at it. (#43)
+        truncated_count = sum(1 for p in fetched if p["content_truncated"])
+        if truncated_count:
+            resp["truncation_warning"] = (
+                f"{truncated_count} of {len(fetched)} fetched pages exceeded "
+                f"the token budget. Full content saved to dump files — see "
+                f"the dump_path field on each truncated page."
+            )
+        return resp
 
     def fetch_url_within_search(
         self, *, url: str, allowed_urls: set[str]
