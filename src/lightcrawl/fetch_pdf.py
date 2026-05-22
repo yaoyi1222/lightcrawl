@@ -12,10 +12,10 @@ DEFAULT_TIMEOUT = 10.0  # PDFs can be large
 MAX_BYTES = 50 * 1024 * 1024  # 50MB limit for PDFs
 DEFAULT_IMPERSONATE = "chrome120"  # reuse fetch_http's profile
 
-# Page-number noise lines: "1", "1 / 239", "Page 12", "- 5 -". The fallback
-# title extractor walks past these to find the real cover-page heading.
+# Page-number noise lines: "1", "1 / 239", "Page 12", "- 5 -", "Page 1 of 239".
+# The fallback title extractor walks past these to find the real cover-page heading.
 _PAGE_NUMBER_LINE = re.compile(
-    r"^\s*(page\s+)?[-—\s]*\d+(\s*[/-]\s*\d+)?[-—\s]*$",
+    r"^\s*(page\s+)?[-—\s]*\d+(\s*(?:[/-]|of)\s*\d+)?[-—\s]*$",
     re.IGNORECASE,
 )
 
@@ -52,9 +52,9 @@ def _extract_title(reader) -> str:
             continue
         if _PAGE_NUMBER_LINE.match(s):
             continue
-        # Length 4 picks up real titles ("Doc1") while still rejecting
-        # short labels. Counted by chars — CJK titles (2+ chars) clear it.
-        if len(s) < 4:
+        # Length 2: rejects empty/whitespace-only but allows short CJK titles
+        # (e.g. "摘要", "目录") which are single real words at 2 codepoints.
+        if len(s) < 2:
             continue
         return s
     return ""

@@ -150,6 +150,7 @@ def test_fetch_pdf_falls_back_to_first_meaningful_line_when_metadata_title_empty
     page1.extract_text.return_value = (
         "1\n"                                            # bare page number
         "1 / 239\n"                                      # X / Y page marker
+        "Page 1 of 239\n"                                # "Page X of Y" format
         "健康元药业集团股份有限公司 2025 年年度报告\n"  # ← this is the title
         "目录\n"
         "1\n"
@@ -163,6 +164,22 @@ def test_fetch_pdf_falls_back_to_first_meaningful_line_when_metadata_title_empty
     assert result.title == "健康元药业集团股份有限公司 2025 年年度报告"
 
 
+def test_fetch_pdf_short_cjk_title_accepted(monkeypatch):
+    """len(s) < 2 must not filter 2-char CJK titles (e.g. '摘要', '目录').
+    The original threshold of 4 rejected these — a real-words title at
+    exactly 2 codepoints, perfectly valid Chinese headings."""
+    mock_reader = MagicMock()
+    mock_reader.metadata = MagicMock(title="")
+    page1 = MagicMock()
+    page1.extract_text.return_value = "1\n2\n3\n摘要\n"
+    mock_reader.pages = [page1]
+    monkeypatch.setattr("lightcrawl.fetch_pdf.ccr.get",
+                        lambda *a, **kw: _fake_curl_response())
+    monkeypatch.setattr("pypdf.PdfReader", lambda *a, **kw: mock_reader)
+    result = fetch_pdf("https://example.com/doc.pdf")
+    assert result.title == "摘要"
+
+
 def test_fetch_pdf_title_empty_when_metadata_missing_and_no_meaningful_line(
     monkeypatch,
 ):
@@ -171,7 +188,7 @@ def test_fetch_pdf_title_empty_when_metadata_missing_and_no_meaningful_line(
     mock_reader = MagicMock()
     mock_reader.metadata = None
     page1 = MagicMock()
-    page1.extract_text.return_value = "1\n2\n   \n3 / 5\n"
+    page1.extract_text.return_value = "1\n2\n   \n3 / 5\nPage 1 of 5\n"
     mock_reader.pages = [page1]
     monkeypatch.setattr("lightcrawl.fetch_pdf.ccr.get",
                         lambda *a, **kw: _fake_curl_response())
