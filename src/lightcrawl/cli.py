@@ -431,7 +431,12 @@ def _add_search_and_read_parser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("query")
     p.add_argument("--depth", choices=["quick", "normal", "deep"], default="normal")
     p.add_argument(
-        "--read-top-n", dest="read_top_n", type=int, default=3,
+        "--read-top-n", "--max-results",
+        dest="read_top_n", type=int, default=3,
+        help=(
+            "Number of search results to fetch in parallel (default: 3). "
+            "`--max-results` is accepted as an alias."
+        ),
     )
     p.add_argument(
         "--read-max-inline-tokens",
