@@ -135,6 +135,30 @@ async def test_list_backends_reports_configuration():
     await svc.close()
 
 
+async def test_list_backends_includes_config_guide_for_real_backends():
+    """Closes #36. When a user runs `list-backends` and sees `configured: false`,
+    they need to know which env var to set and where to get a key. Surface the
+    guide so the answer doesn't depend on remembering the README."""
+    # Use the real backends (no constructor args, picks up empty env).
+    svc = SearchService()
+    backends = svc.list_backends()
+    by_name = {b["name"]: b for b in backends}
+
+    for name in ("brave", "serper", "tavily"):
+        guide = by_name[name].get("config_guide")
+        assert guide is not None, f"{name} missing config_guide"
+        assert guide["env_var"]  # non-empty string
+        assert guide["signup_url"].startswith("https://")
+        assert "config_file" in guide  # mentions the config-file alternative
+
+    # Specific env-var names — guards against silently regressing the
+    # resolve_api_key contract documented in CHANGELOG.md.
+    assert by_name["brave"]["config_guide"]["env_var"] == "BRAVE_SEARCH_API_KEY"
+    assert by_name["serper"]["config_guide"]["env_var"] == "SERPER_API_KEY"
+    assert by_name["tavily"]["config_guide"]["env_var"] == "TAVILY_API_KEY"
+    await svc.close()
+
+
 async def test_search_and_read_enforces_url_provenance():
     """search_and_read must only fetch URLs that were in the search results."""
     fake = FakeBackend(results=[

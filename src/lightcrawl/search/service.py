@@ -80,11 +80,25 @@ class SearchService:
         out = []
         for b in self._backends.values():
             configured = getattr(b, "configured", lambda: True)()
-            out.append({
+            entry: dict = {
                 "name": b.name,
                 "configured": configured,
                 "cost_per_call_usd": b.cost_per_call_usd,
-            })
+            }
+            # Surface the config_guide unconditionally so a user with one
+            # backend already configured still sees how to enable the
+            # others (e.g. for failover). The fields mirror exactly what
+            # `resolve_api_key` looks at — env var, config-file path, and
+            # the signup URL — so the answer here matches reality. (#36)
+            env_var = getattr(b, "env_var", None)
+            signup_url = getattr(b, "signup_url", None)
+            if env_var and signup_url:
+                entry["config_guide"] = {
+                    "env_var": env_var,
+                    "signup_url": signup_url,
+                    "config_file": "~/.lightcrawl/config.json",
+                }
+            out.append(entry)
         return out
 
     def _pick_backend(self, name: str | None) -> tuple[str, Backend]:
