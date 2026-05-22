@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import os
 from datetime import datetime, timezone
 
 import httpx
 
+from ..config import resolve_api_key
 from ..types import SearchResult
 from .base import BackendError
 
@@ -51,7 +51,7 @@ class TavilyBackend:
         *,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
-        self.api_key = api_key or os.environ.get("TAVILY_API_KEY")
+        self.api_key = resolve_api_key("TAVILY_API_KEY", "tavily", explicit=api_key)
         self._transport = transport
 
     def configured(self) -> bool:

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import os
 from datetime import date, datetime, timezone
 
 import httpx
 
+from ..config import resolve_api_key
 from ..types import SearchResult
 from .base import BackendError
 
@@ -86,7 +86,7 @@ class SerperBackend:
         *,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
-        self.api_key = api_key or os.environ.get("SERPER_API_KEY")
+        self.api_key = resolve_api_key("SERPER_API_KEY", "serper", explicit=api_key)
         self._transport = transport
 
     def configured(self) -> bool:
