@@ -148,6 +148,31 @@ def test_clean_dom_removes_html_comments():
     assert "visible" in out
 
 
+def test_clean_dom_removes_processing_instructions():
+    """Closes #9. `_dom_to_plain_text` defensively skips non-element nodes
+    (`isinstance(el.tag, str)`), which silently drops processing-instruction
+    content instead of cleaning it up. Strip PIs in `_clean_dom` so the
+    upstream invariant (only element nodes remain) actually holds — keeping
+    the downstream defensive check honest rather than load-bearing.
+
+    Note: lxml's HTML parser coerces `<?php ...?>` literals into HTML
+    comments, so we have to *construct* a real PI node via `etree`
+    to exercise the new branch (XML-flavored HTML / XHTML / SVG inlined
+    in HTML can all surface PIs at runtime)."""
+    from lxml import etree
+    doc = lxml_html.fromstring(
+        "<html><body><p>visible</p></body></html>"
+    )
+    pi = etree.ProcessingInstruction("xml-stylesheet", 'href="leak.css"')
+    doc.find("body").insert(0, pi)
+    assert doc.xpath("//processing-instruction()")  # sanity: PI is in the tree
+    _clean_dom(doc)
+    assert not doc.xpath("//processing-instruction()")
+    out = lxml_html.tostring(doc, encoding="unicode")
+    assert "leak.css" not in out
+    assert "visible" in out
+
+
 # ---------- _dom_headings ----------
 
 

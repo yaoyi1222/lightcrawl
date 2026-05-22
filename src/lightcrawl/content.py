@@ -221,6 +221,15 @@ def _clean_dom(
         parent = node.getparent()
         if parent is not None:
             parent.remove(node)
+    # XML processing instructions (e.g. `<?xml-stylesheet ...?>`) and
+    # CDATA-flavored payloads land here when SVG/XHTML/XML fragments are
+    # parsed via lxml.html. `_dom_to_plain_text` already skips them via
+    # `isinstance(el.tag, str)`, but leaving them in the tree leaks their
+    # serialized form when tostring() runs downstream (e.g. error replay).
+    for node in doc.xpath("//processing-instruction()"):
+        parent = node.getparent()
+        if parent is not None:
+            parent.remove(node)
 
     # aria-hidden + display:none: collect then remove (modifying the tree
     # while iterating breaks the iterator). Use Python-side .lower() to
