@@ -352,3 +352,61 @@ async def test_search_and_read_records_fetch_failures():
     assert len(out["fetch_failures"]) == 1
     assert out["fetch_failures"][0]["error_code"] == "BLOCKED_BY_CLOUDFLARE"
     await svc.close()
+
+
+async def test_search_and_read_emits_truncation_warning_when_any_page_truncated():
+    """Closes #43. Per-page `content_truncated` is easy to miss when an agent
+    is consuming many pages; surface a top-level warning that names the count
+    and points to the dump_path field so the agent can re-fetch full content."""
+    fake = FakeBackend(results=[
+        SearchResult(rank=1, title="A", url="https://a.example/1", snippet="s"),
+        SearchResult(rank=2, title="B", url="https://b.example/2", snippet="s"),
+        SearchResult(rank=3, title="C", url="https://c.example/3", snippet="s"),
+    ])
+    svc = _svc(fake)
+
+    async def fake_router_fetch(req):
+        truncated = "a.example" in req.url or "b.example" in req.url
+        return {
+            "ok": True, "url": req.url, "final_url": req.url,
+            "strategy_used": "http", "title": req.url, "content": "body",
+            "content_truncated": truncated,
+            "dump_path": "/tmp/d.md" if truncated else None,
+            "metadata": {"status_code": 200, "elapsed_ms": 1,
+                         "needs_js_hint": False, "suggested_selectors": []},
+            "attempts": [],
+        }
+
+    with patch.object(svc.router, "fetch", new=fake_router_fetch):
+        out = await svc.search_and_read(SearchAndReadRequest(query="x", read_top_n=3))
+
+    assert "truncation_warning" in out
+    assert "2" in out["truncation_warning"]
+    assert "3" in out["truncation_warning"]
+    assert "dump_path" in out["truncation_warning"]
+    await svc.close()
+
+
+async def test_search_and_read_no_truncation_warning_when_no_pages_truncated():
+    """Don't emit the warning when nothing was truncated — keep the response
+    shape minimal in the happy path."""
+    fake = FakeBackend(results=[
+        SearchResult(rank=1, title="A", url="https://a.example/1", snippet="s"),
+    ])
+    svc = _svc(fake)
+
+    async def fake_router_fetch(req):
+        return {
+            "ok": True, "url": req.url, "final_url": req.url,
+            "strategy_used": "http", "title": "A", "content": "body",
+            "content_truncated": False, "dump_path": None,
+            "metadata": {"status_code": 200, "elapsed_ms": 1,
+                         "needs_js_hint": False, "suggested_selectors": []},
+            "attempts": [],
+        }
+
+    with patch.object(svc.router, "fetch", new=fake_router_fetch):
+        out = await svc.search_and_read(SearchAndReadRequest(query="x", read_top_n=1))
+
+    assert "truncation_warning" not in out
+    await svc.close()
