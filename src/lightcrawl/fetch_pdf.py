@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import re
 from dataclasses import dataclass
 
 from curl_cffi import requests as ccr
@@ -11,6 +12,53 @@ DEFAULT_TIMEOUT = 10.0  # PDFs can be large
 MAX_BYTES = 50 * 1024 * 1024  # 50MB limit for PDFs
 DEFAULT_IMPERSONATE = "chrome120"  # reuse fetch_http's profile
 
+# Page-number noise lines: "1", "1 / 239", "Page 12", "- 5 -". The fallback
+# title extractor walks past these to find the real cover-page heading.
+_PAGE_NUMBER_LINE = re.compile(
+    r"^\s*(page\s+)?[-—\s]*\d+(\s*[/-]\s*\d+)?[-—\s]*$",
+    re.IGNORECASE,
+)
+
+
+def _extract_title(reader) -> str:
+    """Best-effort title for a PDF, in order:
+      1. `reader.metadata.title` if non-blank.
+      2. First non-page-number, non-trivially-short line of page 1.
+      3. Empty string — never fabricate one.
+
+    pypdf accessor errors (encrypted metadata, malformed XMP, missing
+    pages) are swallowed: a missing title is a UX downgrade, not fatal.
+    """
+    try:
+        meta = getattr(reader, "metadata", None)
+        if meta is not None:
+            t = getattr(meta, "title", None)
+            if isinstance(t, str) and t.strip():
+                return t.strip()
+    except Exception:
+        pass
+
+    try:
+        pages = getattr(reader, "pages", []) or []
+        if not pages:
+            return ""
+        first = (pages[0].extract_text() or "").strip()
+    except Exception:
+        return ""
+
+    for line in first.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if _PAGE_NUMBER_LINE.match(s):
+            continue
+        # Length 4 picks up real titles ("Doc1") while still rejecting
+        # short labels. Counted by chars — CJK titles (2+ chars) clear it.
+        if len(s) < 4:
+            continue
+        return s
+    return ""
+
 
 @dataclass
 class PdfResult:
@@ -19,6 +67,7 @@ class PdfResult:
     content_length: int
     final_url: str
     elapsed_ms: int
+    title: str = ""
 
 
 def fetch_pdf(
@@ -98,4 +147,5 @@ def fetch_pdf(
         content_length=len(raw),
         final_url=str(r.url),
         elapsed_ms=elapsed_ms,
+        title=_extract_title(reader),
     )

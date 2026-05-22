@@ -121,6 +121,68 @@ def test_fetch_pdf_accepts_magic_bytes_without_content_type(monkeypatch):
     assert result.num_pages == 1
 
 
+def test_fetch_pdf_extracts_title_from_metadata(monkeypatch):
+    """Closes #41. When pypdf metadata has a real title, surface it directly."""
+    mock_reader = MagicMock()
+    mock_reader.metadata = MagicMock(title="Annual Report 2025")
+    page1 = MagicMock(); page1.extract_text.return_value = "body text"
+    mock_reader.pages = [page1]
+    monkeypatch.setattr("lightcrawl.fetch_pdf.ccr.get",
+                        lambda *a, **kw: _fake_curl_response())
+    monkeypatch.setattr("pypdf.PdfReader", lambda *a, **kw: mock_reader)
+
+    result = fetch_pdf("https://example.com/doc.pdf")
+    assert result.title == "Annual Report 2025"
+
+
+def test_fetch_pdf_falls_back_to_first_meaningful_line_when_metadata_title_empty(
+    monkeypatch,
+):
+    """Closes #41. Real-world example from the issue: notice.10jqka.com.cn
+    serves PDFs with empty metadata title but a clear cover-page heading.
+    Skip page-numbers ("1 / 239") and ultra-short tokens, take the first
+    line of substance."""
+    mock_reader = MagicMock()
+    # An empty-string title (the exact failure mode in the issue) and a None
+    # title should both behave the same — fall back to the body.
+    mock_reader.metadata = MagicMock(title="")
+    page1 = MagicMock()
+    page1.extract_text.return_value = (
+        "1\n"                                            # bare page number
+        "1 / 239\n"                                      # X / Y page marker
+        "健康元药业集团股份有限公司 2025 年年度报告\n"  # ← this is the title
+        "目录\n"
+        "1\n"
+    )
+    mock_reader.pages = [page1]
+    monkeypatch.setattr("lightcrawl.fetch_pdf.ccr.get",
+                        lambda *a, **kw: _fake_curl_response())
+    monkeypatch.setattr("pypdf.PdfReader", lambda *a, **kw: mock_reader)
+
+    result = fetch_pdf("https://example.com/doc.pdf")
+    assert result.title == "健康元药业集团股份有限公司 2025 年年度报告"
+
+
+def test_fetch_pdf_title_empty_when_metadata_missing_and_no_meaningful_line(
+    monkeypatch,
+):
+    """If even the body has no usable first-line heading (only page numbers /
+    whitespace), title stays empty rather than picking up a meaningless line."""
+    mock_reader = MagicMock()
+    mock_reader.metadata = None
+    page1 = MagicMock()
+    page1.extract_text.return_value = "1\n2\n   \n3 / 5\n"
+    mock_reader.pages = [page1]
+    monkeypatch.setattr("lightcrawl.fetch_pdf.ccr.get",
+                        lambda *a, **kw: _fake_curl_response())
+    monkeypatch.setattr("pypdf.PdfReader", lambda *a, **kw: mock_reader)
+
+    result = fetch_pdf("https://example.com/doc.pdf")
+    # Falls back to the longest non-numeric line if any; else "".
+    # In this contrived case every line is numeric / whitespace.
+    assert result.title == ""
+
+
 def test_fetch_pdf_timeout_maps_to_fetch_error(monkeypatch):
     """curl_cffi timeout → ErrorCode.TIMEOUT."""
     import curl_cffi

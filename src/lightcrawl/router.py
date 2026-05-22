@@ -528,7 +528,7 @@ class Router:
             "final_url": result.final_url,
             "strategy_used": "pdf",
             "fetched_at": _now_iso(),
-            "title": "",
+            "title": result.title,
             "content": inline,
             "content_truncated": truncated,
             "dump_path": dump_path,
