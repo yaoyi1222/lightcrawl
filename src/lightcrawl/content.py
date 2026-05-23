@@ -154,7 +154,25 @@ def detect_login_wall(html_text: str) -> bool:
     return bool(_LOGIN_WALL_PATTERNS.search(html_text))
 
 
-def detect_spa_shell(html_text: str) -> bool:
+# Elements stripped before counting text density in nav-shell detection.
+# Each of these contributes text that isn't meaningful body content and
+# would dilute the link-text/total-text ratio: forms/buttons/labels
+# pad total_text; img alt and svg desc add noise without semantic value.
+_NAV_SHELL_STRIP_TAGS = (
+    "script", "style", "noscript", "form", "button", "select",
+    "textarea", "input", "svg", "iframe", "img",
+)
+
+
+def detect_spa_shell(html_text: str, *, doc=None) -> bool:
+    """SPA / nav-shell detector.
+
+    ``doc`` is an already-parsed ``lxml_html`` element — pass it from
+    callers that have parsed the HTML for other reasons (``html_to_markdown``
+    does this) so we don't reparse just to run the nav-shell check.
+    Routes that only have raw HTML (the router's escalation path) leave
+    ``doc=None`` and pay the parse here.
+    """
     # Empty root/app/__next/__nuxt div → SPA mount point with no SSR
     # content. No length gate: a shell can be large due to inline JS
     # bundles, preload hints, etc. The regex only matches truly empty
@@ -163,7 +181,78 @@ def detect_spa_shell(html_text: str) -> bool:
         return True
     if "<noscript>" in html_text.lower() and "javascript" in html_text.lower():
         return len(html_text) < 5000
-    return False
+    return looks_like_nav_shell(html_text, doc=doc)
+
+
+def looks_like_nav_shell(html_text: str, *, doc=None) -> bool:
+    """Detect server-rendered "nav-shell" pages whose article body is
+    populated asynchronously by JS — distinct from the empty-root SPA
+    shell that ``_SPA_SHELL_PATTERNS`` catches.
+
+    Example in the wild: ``joincare.com/news_detail/*`` returns ~5 KB
+    of static nav menu with no semantic ``<main>``/``<article>`` and
+    almost no paragraph-shaped elements; the article HTML is XHR'd in
+    after page load. ``visible_text_ratio`` doesn't catch these because
+    the nav itself contains plenty of text. (#39)
+
+    The four-signal AND keeps the heuristic tight:
+      - html ≥ 2 KB (don't bother with tiny pages)
+      - no ``<main>``/``<article>``/``role="main"`` (already a content-shaped page)
+      - fewer than 3 ``<p>`` blocks with > 30 chars of *non-anchor* text
+        — anchor-only ``<p><a>long link text</a></p>`` blocks no longer
+        clear the substantial-paragraph guard (PR #53 review)
+      - ≥ 20 anchors AND link-text covers > 60% of the page's visible text
+
+    Density is measured over the ``<body>`` only, with form/button/svg/img
+    etc. stripped first (PR #53 review LOW), so head metadata and
+    interactive-widget text don't inflate the denominator.
+    """
+    if not html_text or len(html_text) < 2000:
+        return False
+    if doc is None:
+        try:
+            doc = lxml_html.fromstring(html_text)
+        except Exception:
+            return False
+    body = doc.find(".//body")
+    if body is None:
+        # No <body> tag (raw fragment, head-only). The page isn't
+        # content-shaped to begin with — let the existing tiny-body
+        # branch in the router handle it.
+        return False
+    # Strip noise tags from a *clone* of the body. Mutating the caller's
+    # doc would break downstream extraction in ``html_to_markdown``
+    # (this function is called early in that pipeline). The cheapest
+    # clone is to deepcopy via lxml's tostring/fromstring round-trip.
+    from copy import deepcopy
+    body = deepcopy(body)
+    strip_xpath = " | ".join(f".//{t}" for t in _NAV_SHELL_STRIP_TAGS)
+    for el in body.xpath(strip_xpath):
+        parent = el.getparent()
+        if parent is not None:
+            parent.remove(el)
+    if body.xpath(".//main | .//article | .//*[@role='main']"):
+        return False
+    substantial_paragraphs = 0
+    for p in body.xpath(".//p"):
+        # Count only the text that is NOT inside a descendant <a>: nav
+        # menus rendered as <p><a>...</a></p> would otherwise sneak past
+        # this guard with > 30 char anchor labels. (PR #53 review MEDIUM)
+        non_anchor_text = "".join(
+            t for t in p.xpath(".//text()[not(ancestor::a)]")
+        ).strip()
+        if len(non_anchor_text) > 30:
+            substantial_paragraphs += 1
+            if substantial_paragraphs >= 3:
+                return False
+    anchors = body.xpath(".//a")
+    if len(anchors) < 20:
+        return False
+    link_text = sum(len((a.text_content() or "").strip()) for a in anchors)
+    total_text = len((body.text_content() or "").strip())
+    if total_text == 0:
+        return False
+    return link_text / total_text > 0.6
 
 
 def _drop_base64_images(doc: lxml_html.HtmlElement) -> None:
@@ -568,12 +657,11 @@ def html_to_markdown(
     showed they discard structure aggressively (29% heading retention vs 92%
     for this pipeline)."""
     looks_login = detect_login_wall(html_text)
-    needs_js = detect_spa_shell(html_text)
 
     if not html_text.strip():
         return ExtractedContent(
             title="", markdown="", plain_text="",
-            looks_like_login_wall=looks_login, needs_js_hint=needs_js,
+            looks_like_login_wall=looks_login, needs_js_hint=False,
         )
 
     try:
@@ -581,8 +669,15 @@ def html_to_markdown(
     except Exception:
         return ExtractedContent(
             title="", markdown=html_text, plain_text=html_text,
-            looks_like_login_wall=looks_login, needs_js_hint=needs_js,
+            looks_like_login_wall=looks_login,
+            needs_js_hint=detect_spa_shell(html_text),
         )
+
+    # Reuse the parse we just did for the SPA / nav-shell check rather
+    # than letting detect_spa_shell parse the HTML a second time. The
+    # router's _should_escalate_to_browser still pays one parse on its
+    # own path (it has only raw HTML). (PR #53 review MEDIUM)
+    needs_js = detect_spa_shell(html_text, doc=doc)
 
     suggestions, hint = _suggested_selectors(doc, url)
     title = (doc.findtext(".//title") or "").strip()
