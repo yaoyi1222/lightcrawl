@@ -61,6 +61,28 @@ class FetchRequest:
     # v0.2 PR 5 — declarative browser actions. Non-empty forces L2 (browser).
     # Parse from JSON dicts via actions.parse_actions() before setting.
     actions: list = field(default_factory=list)
+    # v0.3 PR 2 — local cache controls. See docs/v0.3/design.md §3 (flag
+    # truth table) and §6 (FetchRequest changes). All four defaults match
+    # v0.2 behaviour (no read, no write), so existing callers keep working
+    # byte-identically until they opt into cache.
+    #
+    # max_age_ms: None  → cache lookup is skipped entirely (no read).
+    #              int  → return cache record if its age ≤ max_age_ms,
+    #                     else go to network. Always-skip is the default
+    #                     because v0.2 callers never set a max age.
+    # cache_only: True → cache_only mode. Never hit the network; on miss
+    #              return ok=false / error_code=CACHE_MISS. Caller is
+    #              expected to have set max_age_ms or to want any cache.
+    # store_in_cache: True → on a successful response, persist to cache.
+    #              Crawl / batch-fetch will flip this on by default.
+    # no_cache: True → explicitly bypass cache entirely (no read, no
+    #              write). Used by argparse to override defaults that
+    #              crawl/batch-fetch enable. Mutually exclusive with the
+    #              three flags above — enforced in cli.py argparse.
+    max_age_ms: int | None = None
+    cache_only: bool = False
+    store_in_cache: bool = False
+    no_cache: bool = False
 
 
 def _now_iso() -> str:
