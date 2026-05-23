@@ -14,7 +14,7 @@ from .backends.base import Backend, BackendError
 from .backends.brave import BraveBackend
 from .backends.serper import SerperBackend
 from .backends.tavily import TavilyBackend
-from .snippet import sanitize_snippet
+from .snippet import recover_gbk_mojibake, sanitize_snippet
 from .types import (
     DEPTH_DEFAULTS,
     AnnotatedResult,
@@ -263,8 +263,11 @@ class SearchService:
         # first content block verbatim; for sites whose first block is the
         # navigation bar that turns into markdown nav markup. Strip it
         # before the result leaves the service so agents don't see noise. (#37)
+        # GBK pages served without a charset declaration come back as
+        # UTF-8-decoded mojibake; recover those first so the sanitizer
+        # operates on intelligible chars. (#38)
         for r in raw:
-            r.snippet = sanitize_snippet(r.snippet)
+            r.snippet = sanitize_snippet(recover_gbk_mojibake(r.snippet))
 
         annotated = self._annotate(raw, profile=req.profile)
         self._enhance_snippets(annotated)
