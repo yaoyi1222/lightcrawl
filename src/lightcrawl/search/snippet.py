@@ -55,6 +55,70 @@ _HTML_TAG = re.compile(r"<\/?[a-zA-Z][a-zA-Z0-9-]*(?=[\s/>])[^<>]*>")
 # spaces like NBSP or U+3000) → single space. Run last.
 _WHITESPACE = re.compile(r"\s+")
 
+# Mojibake recovery (#38): a GBK page served without a charset declaration
+# (or with a wrong one) can be decoded as UTF-8 by upstream search
+# backends, yielding snippets like ``˾ƸĻʦڣ``. The mapping is reversible:
+# the original GBK bytes survive as UTF-8 code points (anywhere in
+# U+0080–U+07FF depending on the GBK lead byte — ``ڣ`` in the example
+# sits at U+06A3, beyond our *detection* window but still recovered),
+# and re-encoding as UTF-8 then decoding as GBK recovers the Chinese
+# (``˾ƸĻʦڣ`` → ``司聘幕师冢``). Four guards keep this from corrupting
+# legitimate non-CJK text:
+#   1. text has no valid CJK code points yet (else we'd corrupt good UTF-8)
+#   2. ≥ 3 chars sit in U+0080–U+02FF — a narrow *detection* window over
+#      the densest sub-range of typical GBK mojibake. We deliberately do
+#      NOT widen this to the full U+0080–U+07FF mojibake landing zone:
+#      that would pull in Cyrillic (U+0400–U+04FF), Greek (U+0370–U+03FF)
+#      and Arabic, and the encode-utf8/decode-gbk round-trip on those
+#      scripts produces garbage CJK.
+#   3. encode-utf8 / decode-gbk succeeds at all
+#   4. the recovered text is ≥ 75% CJK by non-whitespace char density.
+#      Latin scripts with heavy diacritics — Vietnamese (62%), Polish
+#      (60%), Czech (50%), Spanish — round-trip to a middling CJK
+#      density because consonants stay ASCII while accented vowels
+#      become CJK. Real GBK mojibake recoveries cluster at 80–100%
+#      because most byte pairs map to CJK (GBK is Chinese-dense). 0.75
+#      sits in the gap between the two clusters with ~7 pp of margin
+#      against Vietnamese on the false-positive side and ~7 pp against
+#      the noisier sina sample on the true-positive side. (PR #52 review)
+_CJK_LO, _CJK_HI = 0x4E00, 0x9FFF
+_SUSPECT_LO, _SUSPECT_HI = 0x0080, 0x02FF
+_MOJIBAKE_MIN_SUSPECT_CHARS = 3
+_RECOVERY_MIN_CJK_RATIO = 0.75
+
+
+def _count_in_range(text: str, lo: int, hi: int) -> int:
+    return sum(1 for c in text if lo <= ord(c) <= hi)
+
+
+def recover_gbk_mojibake(text: str) -> str:
+    """Best-effort recovery of GBK pages mis-decoded as UTF-8 upstream.
+
+    Returns the original text unchanged unless all four guards trigger;
+    a no-op on ASCII, valid UTF-8 Chinese, French, Spanish, Cyrillic,
+    Greek, Vietnamese, Czech, Polish, etc.
+    """
+    if not text:
+        return text
+    if _count_in_range(text, _CJK_LO, _CJK_HI) > 0:
+        return text
+    if _count_in_range(text, _SUSPECT_LO, _SUSPECT_HI) < _MOJIBAKE_MIN_SUSPECT_CHARS:
+        return text
+    try:
+        candidate = text.encode("utf-8").decode("gbk")
+    except UnicodeDecodeError:
+        return text
+    cjk_count = _count_in_range(candidate, _CJK_LO, _CJK_HI)
+    if cjk_count == 0:
+        return text
+    # Density is over the *non-whitespace* part so ASCII separators
+    # (``|``, spaces) between mojibake'd runs don't pull the ratio down
+    # below threshold on legitimately-recoverable snippets.
+    non_ws = sum(1 for c in candidate if not c.isspace())
+    if non_ws == 0 or cjk_count / non_ws < _RECOVERY_MIN_CJK_RATIO:
+        return text
+    return candidate
+
 
 def sanitize_snippet(text: str) -> str:
     """Strip HTML and markdown image/link markup from a search snippet.
