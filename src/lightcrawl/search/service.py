@@ -183,6 +183,11 @@ class SearchService:
             head = cached.strip().split("\n\n", 1)[0]
             if len(head) > SNIPPET_GOAL:
                 head = head[:SNIPPET_GOAL].rsplit(" ", 1)[0] + "…"
+            # Dump content is raw markdown — it can contain the same nav
+            # markup we strip from backend snippets. Run it through the
+            # sanitizer so the enhancer can never re-inject what the
+            # initial pass already removed. (#51 review)
+            head = sanitize_snippet(head)
             if len(head) > len(r.snippet):
                 r.snippet = head
 
