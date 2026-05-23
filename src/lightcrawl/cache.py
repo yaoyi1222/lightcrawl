@@ -83,6 +83,13 @@ class CacheHit:
     status_code: int
     headers: dict
     markdown: str
+    # Carried over from the fetch response so the router can rebuild a
+    # complete success envelope on cache hit. Default empty so the
+    # dataclass can still be constructed from a minimal payload (older
+    # entries written before these fields were added still load).
+    final_url: str = ""
+    title: str = ""
+    content_truncated: bool = False
     headings: list = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
     dump_path: str | None = None
@@ -207,6 +214,9 @@ class Cache:
             "profile": profile or None,
             "fetched_at": now,
             "status_code": status_code,
+            "final_url": response.get("final_url") or url,
+            "title": response.get("title") or "",
+            "content_truncated": bool(response.get("content_truncated")),
             "headers": headers,
             "markdown": markdown,
             "headings": response.get("headings") or [],
@@ -468,6 +478,9 @@ class Cache:
                 status_code=int(data.get("status_code", 200)),
                 headers=data.get("headers") or {},
                 markdown=data.get("markdown", ""),
+                final_url=data.get("final_url") or data.get("url", url),
+                title=data.get("title") or "",
+                content_truncated=bool(data.get("content_truncated")),
                 headings=data.get("headings") or [],
                 metadata=data.get("metadata") or {},
                 dump_path=data.get("dump_path"),
