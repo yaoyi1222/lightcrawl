@@ -93,12 +93,44 @@ def test_sanitize_nested_image_link_with_parens_in_url():
     ) == ""
 
 
-def test_sanitize_keeps_markdown_autolink():
-    # ``<https://...>`` is markdown autolink syntax. A naive ``<[^>]+>``
-    # would eat the whole URL — the fixed regex requires a tag-name
-    # start so autolinks survive. (#51 MEDIUM)
+def test_sanitize_unwraps_markdown_autolink():
+    # ``<https://...>`` is markdown autolink syntax. We unwrap to the
+    # raw URL so the rendered snippet reads naturally; the surrounding
+    # ``<>`` are presentational only. (#51 follow-up — replaces the
+    # earlier "keep autolink with brackets" behaviour.)
     assert sanitize_snippet("Visit <https://example.com/page> for details") == \
-        "Visit <https://example.com/page> for details"
+        "Visit https://example.com/page for details"
+
+
+def test_sanitize_unwraps_autolink_with_parens_in_url():
+    assert sanitize_snippet(
+        "See <https://en.wikipedia.org/wiki/Python_(programming_language)>."
+    ) == "See https://en.wikipedia.org/wiki/Python_(programming_language)."
+
+
+def test_sanitize_unwraps_mailto_autolink():
+    assert sanitize_snippet("Contact <mailto:foo@example.com> please") == \
+        "Contact mailto:foo@example.com please"
+
+
+def test_sanitize_strips_html_comment():
+    # Pre-#51-MEDIUM the catch-all ``<[^>]+>`` regex covered comments
+    # incidentally; the tightened tag regex no longer does. Cover them
+    # explicitly so the fix doesn't introduce a regression. (#51 follow-up)
+    assert sanitize_snippet("<!-- tracking pixel --> Real content") == \
+        "Real content"
+
+
+def test_sanitize_strips_multiple_html_comments():
+    # Non-greedy: adjacent comments should each match independently
+    # rather than the first ``-->`` swallowing everything to the last.
+    assert sanitize_snippet("<!-- a --> middle <!-- b --> tail") == \
+        "middle tail"
+
+
+def test_sanitize_preserves_math_angle_brackets():
+    # Lone ``<`` / ``>`` are not tags and must survive verbatim.
+    assert sanitize_snippet("5 < 10 and 20 > 15") == "5 < 10 and 20 > 15"
 
 
 def test_sanitize_strips_self_closing_html_tag():
