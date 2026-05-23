@@ -58,23 +58,33 @@ _WHITESPACE = re.compile(r"\s+")
 # Mojibake recovery (#38): a GBK page served without a charset declaration
 # (or with a wrong one) can be decoded as UTF-8 by upstream search
 # backends, yielding snippets like ``˾ƸĻʦڣ``. The mapping is reversible:
-# the original GBK bytes survive as UTF-8 code points in U+0080–U+02FF,
+# the original GBK bytes survive as UTF-8 code points (anywhere in
+# U+0080–U+07FF depending on the GBK lead byte — ``ڣ`` in the example
+# sits at U+06A3, beyond our *detection* window but still recovered),
 # and re-encoding as UTF-8 then decoding as GBK recovers the Chinese
 # (``˾ƸĻʦڣ`` → ``司聘幕师冢``). Four guards keep this from corrupting
 # legitimate non-CJK text:
 #   1. text has no valid CJK code points yet (else we'd corrupt good UTF-8)
-#   2. ≥ 3 chars sit in U+0080–U+02FF — the zone where mojibake'd GBK
-#      lead bytes land. Excludes Cyrillic (U+0400–U+04FF) and Greek
-#      (U+0370–U+03FF) so those scripts never enter the recovery path.
+#   2. ≥ 3 chars sit in U+0080–U+02FF — a narrow *detection* window over
+#      the densest sub-range of typical GBK mojibake. We deliberately do
+#      NOT widen this to the full U+0080–U+07FF mojibake landing zone:
+#      that would pull in Cyrillic (U+0400–U+04FF), Greek (U+0370–U+03FF)
+#      and Arabic, and the encode-utf8/decode-gbk round-trip on those
+#      scripts produces garbage CJK.
 #   3. encode-utf8 / decode-gbk succeeds at all
-#   4. the recovered text is ≥ 50% CJK. Spanish ``café`` passes guards
-#      1–3 and "recovers" to ``caf茅 ...`` (one CJK char per accented
-#      letter); the density threshold rejects this since real recovered
-#      Chinese is overwhelmingly CJK.
+#   4. the recovered text is ≥ 75% CJK by non-whitespace char density.
+#      Latin scripts with heavy diacritics — Vietnamese (62%), Polish
+#      (60%), Czech (50%), Spanish — round-trip to a middling CJK
+#      density because consonants stay ASCII while accented vowels
+#      become CJK. Real GBK mojibake recoveries cluster at 80–100%
+#      because most byte pairs map to CJK (GBK is Chinese-dense). 0.75
+#      sits in the gap between the two clusters with ~7 pp of margin
+#      against Vietnamese on the false-positive side and ~7 pp against
+#      the noisier sina sample on the true-positive side. (PR #52 review)
 _CJK_LO, _CJK_HI = 0x4E00, 0x9FFF
 _SUSPECT_LO, _SUSPECT_HI = 0x0080, 0x02FF
 _MOJIBAKE_MIN_SUSPECT_CHARS = 3
-_RECOVERY_MIN_CJK_RATIO = 0.5
+_RECOVERY_MIN_CJK_RATIO = 0.75
 
 
 def _count_in_range(text: str, lo: int, hi: int) -> int:
@@ -85,7 +95,8 @@ def recover_gbk_mojibake(text: str) -> str:
     """Best-effort recovery of GBK pages mis-decoded as UTF-8 upstream.
 
     Returns the original text unchanged unless all four guards trigger;
-    a no-op on ASCII, valid UTF-8 Chinese, French, Cyrillic, Greek, etc.
+    a no-op on ASCII, valid UTF-8 Chinese, French, Spanish, Cyrillic,
+    Greek, Vietnamese, Czech, Polish, etc.
     """
     if not text:
         return text

@@ -76,10 +76,36 @@ def test_recover_skips_greek():
 def test_recover_skips_legit_text_that_round_trips_to_low_cjk_density():
     # Spanish-style text with several Latin-Extended diacritics passes
     # the suspect-zone guard but the encode-utf8/decode-gbk round-trip
-    # only produces one CJK per accented letter — far below the 50%
+    # only produces one CJK per accented letter — well below the 75%
     # density floor. Without that floor, ``café résumé naïve`` would be
     # corrupted to ``caf茅 r茅sum茅 na茂ve``.
     text = "café résumé naïve épée"
+    assert recover_gbk_mojibake(text) == text
+
+
+def test_recover_skips_vietnamese():
+    # PR #52 review HIGH: 3-4 suspect chars + 60-62% CJK density. The
+    # original 0.5 floor let these through and produced garbage like
+    # ``膽岷穋 c谩ch ki峄僲 膽峄媙h``. The 0.75 floor catches them.
+    for text in [
+        "đặc cách kiểm định",
+        "người đẹp áo dài",
+        "đường đi khó khăn",
+    ]:
+        assert recover_gbk_mojibake(text) == text, f"Vietnamese corrupted: {text!r}"
+
+
+def test_recover_skips_czech_pangram():
+    # PR #52 review HIGH: Czech pangram with 11 suspect chars + 50% CJK
+    # density. Used to corrupt to ``P艡铆li拧 啪lu钮ou膷k媒 k暖艌 煤p臎l``.
+    text = "Příliš žluťoučký kůň úpěl"
+    assert recover_gbk_mojibake(text) == text
+
+
+def test_recover_skips_polish_pangram():
+    # PR #52 review HIGH: Polish pangram with 9 suspect chars + 60% CJK
+    # density. Used to corrupt to ``Za偶贸艂膰 g臋艣l膮 ja藕艅``.
+    text = "Zażółć gęślą jaźń"
     assert recover_gbk_mojibake(text) == text
 
 
