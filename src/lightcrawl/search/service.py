@@ -14,6 +14,7 @@ from .backends.base import Backend, BackendError
 from .backends.brave import BraveBackend
 from .backends.serper import SerperBackend
 from .backends.tavily import TavilyBackend
+from .snippet import sanitize_snippet
 from .types import (
     DEPTH_DEFAULTS,
     AnnotatedResult,
@@ -182,6 +183,11 @@ class SearchService:
             head = cached.strip().split("\n\n", 1)[0]
             if len(head) > SNIPPET_GOAL:
                 head = head[:SNIPPET_GOAL].rsplit(" ", 1)[0] + "…"
+            # Dump content is raw markdown — it can contain the same nav
+            # markup we strip from backend snippets. Run it through the
+            # sanitizer so the enhancer can never re-inject what the
+            # initial pass already removed. (#51 review)
+            head = sanitize_snippet(head)
             if len(head) > len(r.snippet):
                 r.snippet = head
 
@@ -252,6 +258,13 @@ class SearchService:
                 attempts,
                 ["rewrite the query", "try a broader phrasing", "try a different backend"],
             )
+
+        # Backends (Tavily especially) sometimes pass through the page's
+        # first content block verbatim; for sites whose first block is the
+        # navigation bar that turns into markdown nav markup. Strip it
+        # before the result leaves the service so agents don't see noise. (#37)
+        for r in raw:
+            r.snippet = sanitize_snippet(r.snippet)
 
         annotated = self._annotate(raw, profile=req.profile)
         self._enhance_snippets(annotated)
