@@ -156,6 +156,116 @@ def test_looks_like_nav_shell_false_on_short_pages():
     assert not looks_like_nav_shell("<html><body><a href=/>x</a></body></html>")
 
 
+# -- PR #53 review regressions ----------------------------------------------
+
+
+def test_looks_like_nav_shell_detects_p_wrapped_anchor_navs():
+    # PR #53 review MEDIUM: nav menus rendered as
+    # ``<p><a href=...>About Us — Learn more about our company history</a></p>``
+    # used to clear the substantial-paragraph guard because the <a>'s
+    # text was > 30 chars. The fixed check counts only non-anchor text
+    # inside each <p>, so anchor-only paragraphs no longer let the
+    # whole page slip past detection.
+    menu_p = "".join(
+        f'<p><a href="/about-{i}">About Us — Learn more about our company history {i}</a></p>'
+        for i in range(40)
+    )
+    html = (
+        "<html><body>"
+        f"{menu_p}"
+        '<div class="footer">'
+        '<a href="/privacy">隐私</a><a href="/terms">条款</a>'
+        "</div>"
+        "</body></html>"
+    )
+    assert len(html) > 2000
+    assert looks_like_nav_shell(html)
+
+
+def test_looks_like_nav_shell_false_with_mostly_anchor_p_but_some_real_body():
+    # Mixed: 2 anchor-only <p> (don't count) + 3 substantial body
+    # paragraphs (do count). Substantial paragraphs ≥ 3 → not a nav-shell.
+    html = (
+        "<html><body>"
+        + '<p><a href="/x">Anchor-only paragraph one</a></p>'
+        + '<p><a href="/y">Anchor-only paragraph two</a></p>'
+        + "".join(
+            f"<p>Real body paragraph {i} with more than thirty characters "
+            "outside any anchor.</p>"
+            for i in range(3)
+        )
+        + "".join(f'<a href="/n/{i}">n{i}</a>' for i in range(30))
+        + "</body></html>"
+    )
+    assert not looks_like_nav_shell(html)
+
+
+def test_looks_like_nav_shell_ignores_head_metadata_for_density():
+    # PR #53 review LOW 1: ``doc.text_content()`` previously included
+    # <title>/<meta> text, inflating the denominator and dragging the
+    # link/total ratio below the 60% threshold. Body-only scoping
+    # restores correct detection.
+    long_title = "T" * 5000  # would have dominated total_text under the old version
+    menu = "".join(
+        f'<li><a href="/cat/{i}">分类 {i}</a></li>' for i in range(80)
+    )
+    html = (
+        f"<html><head><title>{long_title}</title></head><body>"
+        f"<ul>{menu}</ul>"
+        "</body></html>"
+    )
+    assert looks_like_nav_shell(html)
+
+
+def test_looks_like_nav_shell_ignores_form_button_text_for_density():
+    # PR #53 review LOW 2: a search form or signup widget with lots of
+    # button/label text used to inflate total_text. We strip form/button/
+    # select/textarea/input before measuring density.
+    form_noise = (
+        '<form action="/q">'
+        '<label>Enter your full address including street, city, and ZIP code here</label>'
+        '<input type="text" name="q">'
+        '<button>Submit your search query and find results immediately</button>'
+        '<select><option>Pick a category from the dropdown menu</option></select>'
+        '<textarea>Additional comments and notes go in this very long textarea</textarea>'
+        '</form>'
+    )
+    menu = "".join(
+        f'<li><a href="/cat/{i}">分类 {i}</a></li>' for i in range(80)
+    )
+    html = (
+        "<html><body>"
+        f"{form_noise}"
+        f"<ul>{menu}</ul>"
+        "</body></html>"
+    )
+    assert looks_like_nav_shell(html)
+
+
+def test_looks_like_nav_shell_accepts_preparsed_doc():
+    # PR #53 review MEDIUM: the public API now accepts a pre-parsed doc.
+    # html_to_markdown uses this to skip one lxml parse on the hot path;
+    # external callers benefit similarly. Sanity-check the doc path
+    # produces the same answer as the html-text path.
+    html = _nav_shell_html(num_links=80)
+    doc = lxml_html.fromstring(html)
+    assert looks_like_nav_shell(html, doc=doc) is True
+    assert looks_like_nav_shell(html, doc=doc) is looks_like_nav_shell(html)
+
+
+def test_detect_spa_shell_does_not_mutate_caller_doc():
+    # The nav-shell pass deepcopies the body before stripping noise tags
+    # so the caller's parsed doc is untouched. Without that copy, the
+    # downstream html_to_markdown pipeline would lose all the elements
+    # in _NAV_SHELL_STRIP_TAGS (forms, buttons, imgs, etc.).
+    html = _nav_shell_html(num_links=80, extra_body='<form><button>Click me</button></form>')
+    doc = lxml_html.fromstring(html)
+    before = lxml_html.tostring(doc, encoding="unicode")
+    detect_spa_shell(html, doc=doc)
+    after = lxml_html.tostring(doc, encoding="unicode")
+    assert before == after
+
+
 def test_maybe_dump_inline(tmp_path, monkeypatch):
     monkeypatch.setattr("lightcrawl.content.DUMPS", tmp_path)
     inline, truncated, dump_path = maybe_dump("https://x.test/", "small body", 100)
