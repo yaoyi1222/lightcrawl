@@ -163,7 +163,52 @@ def detect_spa_shell(html_text: str) -> bool:
         return True
     if "<noscript>" in html_text.lower() and "javascript" in html_text.lower():
         return len(html_text) < 5000
-    return False
+    return looks_like_nav_shell(html_text)
+
+
+def looks_like_nav_shell(html_text: str) -> bool:
+    """Detect server-rendered "nav-shell" pages whose article body is
+    populated asynchronously by JS — distinct from the empty-root SPA
+    shell that ``_SPA_SHELL_PATTERNS`` catches.
+
+    Example in the wild: ``joincare.com/news_detail/*`` returns ~5 KB
+    of static nav menu with no semantic ``<main>``/``<article>`` and
+    almost no paragraph-shaped elements; the article HTML is XHR'd in
+    after page load. ``visible_text_ratio`` doesn't catch these because
+    the nav itself contains plenty of text. (#39)
+
+    The four-signal AND keeps the heuristic tight:
+      - html ≥ 2 KB (don't bother with tiny pages)
+      - no ``<main>``/``<article>``/``role="main"`` (already a content-shaped page)
+      - fewer than 3 ``<p>`` blocks with > 30 chars text
+      - ≥ 20 anchors AND link-text covers > 60% of the page's visible text
+    """
+    if not html_text or len(html_text) < 2000:
+        return False
+    try:
+        doc = lxml_html.fromstring(html_text)
+    except Exception:
+        return False
+    for el in doc.xpath("//script | //style | //noscript"):
+        parent = el.getparent()
+        if parent is not None:
+            parent.remove(el)
+    if doc.xpath("//main | //article | //*[@role='main']"):
+        return False
+    substantial_paragraphs = sum(
+        1 for p in doc.xpath("//p")
+        if len((p.text_content() or "").strip()) > 30
+    )
+    if substantial_paragraphs >= 3:
+        return False
+    anchors = doc.xpath("//a")
+    if len(anchors) < 20:
+        return False
+    link_text = sum(len((a.text_content() or "").strip()) for a in anchors)
+    total_text = len((doc.text_content() or "").strip())
+    if total_text == 0:
+        return False
+    return link_text / total_text > 0.6
 
 
 def _drop_base64_images(doc: lxml_html.HtmlElement) -> None:

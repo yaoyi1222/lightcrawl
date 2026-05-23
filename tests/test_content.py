@@ -14,6 +14,7 @@ from lightcrawl.content import (
     detect_spa_shell,
     estimate_tokens,
     html_to_markdown,
+    looks_like_nav_shell,
     maybe_dump,
     visible_text_ratio,
 )
@@ -56,6 +57,103 @@ def test_detect_login_wall():
 def test_detect_spa_shell():
     assert detect_spa_shell('<html><body><div id="root"></div></body></html>')
     assert not detect_spa_shell(SIMPLE_HTML)
+
+
+# ---------- looks_like_nav_shell (#39 — joincare.com pattern) ----------
+
+
+def _nav_shell_html(num_links: int = 80, extra_body: str = "") -> str:
+    """Synthesize a joincare-style nav-shell page: lots of menu links,
+    no semantic content tags, no substantial paragraphs."""
+    menu = "".join(
+        f'<li><a href="/cat/{i}">分类 {i}</a></li>' for i in range(num_links)
+    )
+    return (
+        "<html><head><title>新闻</title></head><body>"
+        '<div class="header">'
+        '<a href="/">首页</a><a href="/about">关于</a>'
+        '<a href="/contact">联系我们</a><a href="/news">新闻</a>'
+        "</div>"
+        f"<ul class='nav-menu'>{menu}</ul>"
+        '<div class="footer">'
+        '<a href="/privacy">隐私</a><a href="/terms">条款</a>'
+        "</div>"
+        f"{extra_body}"
+        "</body></html>"
+    )
+
+
+def test_looks_like_nav_shell_joincare_pattern():
+    # Heavy nav, no <main>/<article>, no substantial paragraphs, link
+    # text dominates. This is the joincare.com signature from #39.
+    html = _nav_shell_html(num_links=80)
+    assert len(html) > 2000
+    assert looks_like_nav_shell(html)
+
+
+def test_looks_like_nav_shell_picked_up_by_detect_spa_shell():
+    # Wired through to detect_spa_shell so the existing escalation
+    # path in router._should_escalate_to_browser fires automatically.
+    html = _nav_shell_html(num_links=80)
+    assert detect_spa_shell(html)
+
+
+def test_looks_like_nav_shell_false_on_article_with_inline_links():
+    # A real article that happens to contain inline links should NOT
+    # be misclassified. Three paragraphs is enough to exit early.
+    html = (
+        "<html><body><article><h1>Title</h1>"
+        + "".join(
+            f"<p>This is paragraph {i} with substantial text including a "
+            f'<a href="/ref{i}">reference link {i}</a> embedded inline. '
+            "It must be more than thirty characters to count as substantial.</p>"
+            for i in range(5)
+        )
+        + "</article></body></html>"
+    )
+    assert not looks_like_nav_shell(html)
+
+
+def test_looks_like_nav_shell_false_when_main_element_present():
+    # Pages with explicit semantic content containers are not nav-shells
+    # even if they have heavy nav elsewhere — the <main> signal wins.
+    html = (
+        "<html><body>"
+        + _nav_shell_html(num_links=80)[len("<html><body>") : -len("</body></html>")]
+        + "<main><h1>Real article</h1><p>Body.</p></main>"
+        "</body></html>"
+    )
+    assert not looks_like_nav_shell(html)
+
+
+def test_looks_like_nav_shell_false_when_too_few_anchors():
+    # A small page with only a handful of links isn't a nav-shell —
+    # could just be a sparse landing page.
+    html = (
+        "<html><body>"
+        + '<a href="/x">x</a>' * 5
+        + "<div>" + "x" * 3000 + "</div>"
+        + "</body></html>"
+    )
+    assert not looks_like_nav_shell(html)
+
+
+def test_looks_like_nav_shell_false_when_link_text_minority():
+    # 40 anchors but lots of non-link body text: the page legitimately
+    # has content, so we don't escalate.
+    html = (
+        "<html><body>"
+        + "".join(f'<a href="/n/{i}">n{i}</a>' for i in range(40))
+        + "<div>" + ("This is some body text that is not inside a link. " * 100) + "</div>"
+        + "</body></html>"
+    )
+    assert not looks_like_nav_shell(html)
+
+
+def test_looks_like_nav_shell_false_on_short_pages():
+    # Length gate: tiny pages take a different code path
+    # (the existing < 200-byte escalation in the router).
+    assert not looks_like_nav_shell("<html><body><a href=/>x</a></body></html>")
 
 
 def test_maybe_dump_inline(tmp_path, monkeypatch):

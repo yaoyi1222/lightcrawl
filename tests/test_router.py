@@ -172,6 +172,26 @@ def test_should_escalate_http_403():
     assert _should_escalate_to_browser(403, "<html></html>") is True
 
 
+def test_should_escalate_nav_shell():
+    """Nav-shell pages (joincare.com #39): heavy static nav, no
+    semantic content tags, almost no <p> blocks. They route through
+    detect_spa_shell → _should_escalate_to_browser, so the router
+    flips to L2 automatically."""
+    menu = "".join(
+        f'<li><a href="/cat/{i}">分类 {i}</a></li>' for i in range(80)
+    )
+    html = (
+        "<html><body>"
+        f"<ul class='nav-menu'>{menu}</ul>"
+        '<div class="footer">'
+        '<a href="/privacy">隐私</a><a href="/terms">条款</a>'
+        "</div>"
+        "</body></html>"
+    )
+    assert len(html) > 2000
+    assert _should_escalate_to_browser(200, html) is True
+
+
 def test_should_escalate_http_429():
     assert _should_escalate_to_browser(429, "<html></html>") is True
 
