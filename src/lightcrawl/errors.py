@@ -18,6 +18,12 @@ class ErrorCode(str, Enum):
     PDF_NO_TEXT_LAYER = "PDF_NO_TEXT_LAYER"
     PDF_FETCH_BLOCKED = "PDF_FETCH_BLOCKED"
     ACTION_FAILED = "ACTION_FAILED"
+    # v0.3 cache codes. See docs/v0.3/design.md §7.
+    # CACHE_MISS / CRAWL_MAX_PAGES / ROBOTS_DISALLOWED are "expected
+    # branches" — callers should treat them as info, not hard failure.
+    CACHE_MISS = "CACHE_MISS"                  # cache_only=True and no hit
+    CACHE_CORRUPT = "CACHE_CORRUPT"            # payload / index disagree
+    CACHE_FLAG_CONFLICT = "CACHE_FLAG_CONFLICT"  # mutually exclusive CLI flags
     UNKNOWN = "UNKNOWN"
 
 

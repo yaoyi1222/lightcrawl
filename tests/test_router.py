@@ -200,6 +200,40 @@ def test_should_escalate_http_503():
     assert _should_escalate_to_browser(503, "<html></html>") is True
 
 
+# -- v0.3 PR 2.1: FetchRequest cache fields ---------------------------------
+
+
+def test_fetchrequest_cache_field_defaults_match_v02():
+    """New cache fields must default to "do nothing" so v0.2 callers keep
+    working byte-identically. See docs/v0.3/design.md §6."""
+    req = FetchRequest(url="https://example.com/")
+    assert req.max_age_ms is None
+    assert req.cache_only is False
+    assert req.store_in_cache is False
+    assert req.no_cache is False
+
+
+def test_fetchrequest_cache_fields_accept_overrides():
+    req = FetchRequest(
+        url="https://example.com/",
+        max_age_ms=3_600_000,
+        cache_only=True,
+        store_in_cache=True,
+        no_cache=False,
+    )
+    assert req.max_age_ms == 3_600_000
+    assert req.cache_only is True
+    assert req.store_in_cache is True
+
+
+def test_errorcode_includes_new_cache_codes():
+    """Locked in here so callers can stably import them before the cache
+    module lands. See docs/v0.3/design.md §7."""
+    assert ErrorCode.CACHE_MISS.value == "CACHE_MISS"
+    assert ErrorCode.CACHE_CORRUPT.value == "CACHE_CORRUPT"
+    assert ErrorCode.CACHE_FLAG_CONFLICT.value == "CACHE_FLAG_CONFLICT"
+
+
 # -- Bug 5: IPv6 literal addresses ------------------------------------------
 
 
