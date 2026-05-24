@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Literal
@@ -333,10 +334,13 @@ class Router:
             return response
         try:
             self._get_cache().store(req.url, profile=req.profile, response=response)
-        except Exception:
-            # Best-effort. Swallow rather than fail the fetch. PR 2.5
-            # adds a multiprocess-WAL contention test that should be
-            # the main shake-out for write reliability.
+        except (OSError, sqlite3.Error):
+            # Best-effort: a disk-full / WAL-contention / permission error
+            # shouldn't fail an otherwise-successful fetch. Narrowed from
+            # bare ``Exception`` so programming errors (TypeError from a
+            # bad response shape, etc.) still surface. PR 2.5 adds a
+            # multiprocess-WAL contention test as the main shake-out for
+            # write reliability.
             pass
         return response
 
