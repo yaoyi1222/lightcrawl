@@ -57,6 +57,13 @@ class SearchAndReadRequest:
     read_max_inline_tokens: int = 4000
     profile: str | None = None
     timeout_ms: int = 60_000
+    # v0.3 PR 2.4 — cache controls flow through every per-result fetch.
+    # Defaults match v0.2-compatible no-cache behaviour. See
+    # docs/v0.3/design.md §3 truth table for the legal combinations.
+    max_age_ms: int | None = None
+    cache_only: bool = False
+    store_in_cache: bool = False
+    no_cache: bool = False
 
 
 class SearchService:
@@ -311,6 +318,10 @@ class SearchService:
                     profile=req.profile,
                     max_inline_tokens=req.read_max_inline_tokens,
                     timeout_ms=remaining_ms,
+                    max_age_ms=req.max_age_ms,
+                    cache_only=req.cache_only,
+                    store_in_cache=req.store_in_cache,
+                    no_cache=req.no_cache,
                 )
                 return url, await self._router.fetch(fr)
             except Exception as e:

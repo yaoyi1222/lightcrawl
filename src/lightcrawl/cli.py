@@ -24,6 +24,163 @@ from .search.service import (
 _TAG_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9-]*$")
 
 
+# v0.3 PR 2.4 — duration parser for cache flags (see docs/v0.3/design.md §3).
+# Accepts 300ms / 5s / 10m / 2h / 7d shape. Bare integers are rejected because
+# the unit determines orders of magnitude (60 → seconds? minutes?), so requiring
+# a unit prevents silent off-by-1000x bugs.
+_DUR_RE = re.compile(r"^\s*(\d+)\s*(ms|s|m|h|d)\s*$")
+_DUR_UNITS_MS = {
+    "ms": 1, "s": 1_000, "m": 60_000, "h": 3_600_000, "d": 86_400_000,
+}
+
+
+def _parse_duration_ms(value: str) -> int:
+    """Parse ``300ms`` / ``5s`` / ``10m`` / ``2h`` / ``7d`` → milliseconds.
+
+    Used as an argparse ``type=`` so invalid input becomes a clean
+    ``argparse`` error rather than crashing inside the subcommand. The
+    regex is anchored on both ends — partial matches like ``"5sblahblah"``
+    are rejected.
+    """
+    if not isinstance(value, str):
+        raise argparse.ArgumentTypeError(
+            f"duration must be a string like '5s' or '2h', got {type(value).__name__}",
+        )
+    m = _DUR_RE.match(value)
+    if m is None:
+        raise argparse.ArgumentTypeError(
+            f"invalid duration {value!r}; expected forms like "
+            f"'500ms', '5s', '10m', '2h', '7d'",
+        )
+    n = int(m.group(1))
+    if n <= 0:
+        raise argparse.ArgumentTypeError(
+            f"duration must be positive, got {value!r}",
+        )
+    return n * _DUR_UNITS_MS[m.group(2)]
+
+
+def _add_cache_flags(p: argparse.ArgumentParser) -> None:
+    """Attach the four cache control flags from design §3 to a parser.
+
+    Shared across ``fetch`` / ``search-and-read`` (and future ``crawl`` /
+    ``batch-fetch``) so every subcommand that supports cache speaks the
+    same dialect. argparse mutex enforcement happens later in
+    ``_validate_cache_flags`` — argparse's own ``mutually_exclusive_group``
+    can't express "A may combine with B and C but not D"."""
+    p.add_argument(
+        "--max-age",
+        dest="max_age_ms",
+        type=_parse_duration_ms,
+        default=None,
+        metavar="DUR",
+        help=(
+            "Max acceptable cache age (e.g. '500ms', '5s', '10m', '2h', '7d'). "
+            "Cache hit within this window skips the network. "
+            "For ``fetch``, also enables cache write unless --no-store."
+        ),
+    )
+    p.add_argument(
+        "--cache-only",
+        dest="cache_only",
+        action="store_true",
+        help=(
+            "Read-only cache mode. Cache miss returns CACHE_MISS without "
+            "touching the network. Use for offline replay."
+        ),
+    )
+    p.add_argument(
+        "--no-cache",
+        dest="no_cache",
+        action="store_true",
+        help=(
+            "Bypass cache entirely (no read, no write). Mutually exclusive "
+            "with --max-age, --cache-only, and --no-store; combining them "
+            "returns CACHE_FLAG_CONFLICT."
+        ),
+    )
+    p.add_argument(
+        "--no-store",
+        dest="no_store",
+        action="store_true",
+        help=(
+            "Read cache (respecting --max-age) but don't write back. Useful "
+            "for one-shot fetches that shouldn't pollute the cache."
+        ),
+    )
+
+
+def _validate_cache_flags(args: argparse.Namespace) -> dict | None:
+    """Return a CACHE_FLAG_CONFLICT envelope if ``--no-cache`` is combined
+    with any of ``--max-age``/``--cache-only``/``--no-store``; else None.
+
+    Why a return-value instead of ``parser.error()``: argparse's
+    ``error()`` prints to stderr and exits non-zero, which would breach
+    the "single JSON object on stdout" contract that skills rely on."""
+    if not getattr(args, "no_cache", False):
+        return None
+    conflicts: list[str] = []
+    if getattr(args, "max_age_ms", None) is not None:
+        conflicts.append("--max-age")
+    if getattr(args, "cache_only", False):
+        conflicts.append("--cache-only")
+    if getattr(args, "no_store", False):
+        conflicts.append("--no-store")
+    if not conflicts:
+        return None
+    return {
+        "ok": False,
+        "error_code": ErrorCode.CACHE_FLAG_CONFLICT.value,
+        "error_detail": (
+            "--no-cache cannot be combined with "
+            + ", ".join(conflicts)
+            + " (see design §3 truth table)."
+        ),
+    }
+
+
+def _resolve_cache_kwargs(
+    args: argparse.Namespace, *, default_store_in_cache: bool = False,
+) -> dict:
+    """Map CLI flags to FetchRequest cache fields per the design §3 truth
+    table. Validation (mutex) must run first.
+
+    ``default_store_in_cache`` is the subcommand's default for write
+    behaviour when neither ``--max-age`` nor ``--no-store`` are set. For
+    ``fetch``/``search-and-read`` this is False (v0.2-compatible);
+    ``crawl``/``batch-fetch`` will flip it to True in a later PR.
+    """
+    if getattr(args, "no_cache", False):
+        return dict(
+            max_age_ms=None, cache_only=False,
+            store_in_cache=False, no_cache=True,
+        )
+    cache_only = bool(getattr(args, "cache_only", False))
+    max_age_ms = getattr(args, "max_age_ms", None)
+    no_store = bool(getattr(args, "no_store", False))
+    if cache_only:
+        # cache-only mode never writes (the design table makes this
+        # explicit: the entire point is "look at the cache, don't go to
+        # the net"; if we wrote on cache miss we'd... still be doing
+        # nothing, because cache-only short-circuits before network).
+        store_in_cache = False
+    elif max_age_ms is not None:
+        # --max-age implies write (the recommended `fetch --max-age 1h`
+        # combo), overridable by --no-store.
+        store_in_cache = not no_store
+    else:
+        # No cache-related flag specified — honour the subcommand default.
+        # --no-store alone is a no-op for fetch (which defaults to False)
+        # but matters for crawl/batch-fetch's default-True.
+        store_in_cache = default_store_in_cache and not no_store
+    return dict(
+        max_age_ms=max_age_ms,
+        cache_only=cache_only,
+        store_in_cache=store_in_cache,
+        no_cache=False,
+    )
+
+
 def _clean_tags(raw) -> list[str]:
     # Reject anything that isn't a list — a bare string would otherwise
     # iterate character-by-character, which is never the caller's intent.
@@ -158,6 +315,10 @@ async def _run_auth_login(args: argparse.Namespace) -> int:
 
 
 def _cmd_fetch(args: argparse.Namespace) -> int:
+    err = _validate_cache_flags(args)
+    if err is not None:
+        _print(err)
+        return 1
     return _safe_run(_run_fetch(args))
 
 
@@ -192,6 +353,9 @@ async def _run_fetch(args: argparse.Namespace) -> int:
         exclude_tags=_clean_tags(getattr(args, "exclude_tags", None)),
         mobile=bool(getattr(args, "mobile", False)),
         actions=parsed_actions,
+        # v0.3 PR 2.4 — cache controls (design §3). ``fetch`` defaults to
+        # store_in_cache=False so v0.2 callers stay byte-identical.
+        **_resolve_cache_kwargs(args, default_store_in_cache=False),
     )
     rbi = getattr(args, "remove_base64_images", None)
     if rbi is not None:
@@ -230,6 +394,10 @@ async def _run_search(args: argparse.Namespace) -> int:
 
 
 def _cmd_search_and_read(args: argparse.Namespace) -> int:
+    err = _validate_cache_flags(args)
+    if err is not None:
+        _print(err)
+        return 1
     return _safe_run(_run_search_and_read(args))
 
 
@@ -241,6 +409,10 @@ async def _run_search_and_read(args: argparse.Namespace) -> int:
         read_max_inline_tokens=args.read_max_inline_tokens,
         profile=args.profile,
         timeout_ms=args.timeout_ms,
+        # v0.3 PR 2.4 — cache controls propagate to every per-result
+        # fetch the service fans out. Default store_in_cache=False
+        # preserves v0.2 behaviour.
+        **_resolve_cache_kwargs(args, default_store_in_cache=False),
     )
     svc = SearchService()
     try:
@@ -396,6 +568,7 @@ def _add_fetch_parser(sub: argparse._SubParsersAction) -> None:
             ',"label":"post-click"}]\'. Non-empty actions force L2 (browser).'
         ),
     )
+    _add_cache_flags(p)
     p.set_defaults(func=_cmd_fetch)
 
 
@@ -446,6 +619,7 @@ def _add_search_and_read_parser(sub: argparse._SubParsersAction) -> None:
     )
     p.add_argument("--profile", help="Use saved login profile for the fetch phase")
     p.add_argument("--timeout-ms", dest="timeout_ms", type=int, default=60_000)
+    _add_cache_flags(p)
     p.set_defaults(func=_cmd_search_and_read)
 
 
