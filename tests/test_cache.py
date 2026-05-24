@@ -255,7 +255,10 @@ def test_gc_by_host(cache: Cache, fake_clock):
 
 
 def test_gc_lru_drains_to_watermark(cache: Cache, fake_clock):
-    """Insert 5 entries; cap total bytes so LRU drain trims to ≤ 80 %."""
+    """Insert 5 entries; cap total bytes so LRU drain trims to ≤ 80 %
+    of the cap, not just ≤ cap. The 80 % watermark is the actual
+    contract — without asserting against ``cap * 0.8`` the test would
+    pass even if ``_gc_lru`` shaved a single byte under the cap."""
     for i in range(5):
         fake_clock[0] += 1_000
         cache.store(
@@ -263,10 +266,11 @@ def test_gc_lru_drains_to_watermark(cache: Cache, fake_clock):
             response=_response(content="x" * 500),
         )
     before = cache.stats()
-    stats = cache.gc(max_total_bytes=before.total_bytes // 2)
+    cap = before.total_bytes // 2
+    stats = cache.gc(max_total_bytes=cap)
     after = cache.stats()
     assert stats.deleted_entries > 0
-    assert after.total_bytes <= before.total_bytes // 2
+    assert after.total_bytes <= int(cap * 0.8)
     # Oldest accessed_at should be the ones evicted; we wrote 0 → 4
     # without further reads, so /0 is the LRU candidate.
     assert cache.lookup("https://example.com/0", profile=None, max_age_ms=60_000) is None
@@ -330,6 +334,154 @@ def test_store_records_dump_and_screenshot_sizes(cache: Cache, fake_clock, tmp_p
     assert hit is not None
     assert hit.dump_path == str(dump)
     assert hit.screenshot_path == str(shot)
+
+
+# -- side-file cleanup (dumps + screenshots) -------------------------------
+
+
+def _write_side_files(cache: Cache, basename: str) -> tuple[str, str]:
+    """Write a dump under ``cache.dumps_dir`` and a screenshot under
+    ``cache.screenshots_dir`` so the cleanup path treats them as
+    belonging to this cache."""
+    dump = cache.dumps_dir / f"{basename}.md"
+    dump.write_bytes(b"dump bytes")
+    shot = cache.screenshots_dir / f"{basename}.png"
+    shot.write_bytes(b"shot bytes")
+    return str(dump), str(shot)
+
+
+def test_delete_removes_dump_and_screenshot(cache: Cache, fake_clock):
+    """``delete()`` must clear the payload AND the dump/screenshot files
+    referenced by the payload. Without this, cache eviction leaks files
+    forever under ``cache/dumps`` and ``cache/screenshots``."""
+    url = "https://example.com/x"
+    dump, shot = _write_side_files(cache, "del")
+    cache.store(url, profile=None, response=_response(
+        dump_path=dump, screenshot_path=shot,
+    ))
+    cache.delete(url, profile=None)
+    assert not (cache.dumps_dir / "del.md").exists()
+    assert not (cache.screenshots_dir / "del.png").exists()
+
+
+def test_gc_by_host_removes_dump_and_screenshot(cache: Cache, fake_clock):
+    dump, shot = _write_side_files(cache, "host")
+    cache.store(
+        "https://a.example/x", profile=None,
+        response=_response(dump_path=dump, screenshot_path=shot),
+    )
+    cache.gc(host="a.example")
+    assert not (cache.dumps_dir / "host.md").exists()
+    assert not (cache.screenshots_dir / "host.png").exists()
+
+
+def test_gc_lru_removes_dump_and_screenshot(cache: Cache, fake_clock):
+    """LRU drain must also delete the dump/screenshot files of the
+    evicted entries, not just the payload JSON."""
+    for i in range(3):
+        fake_clock[0] += 1_000
+        dump, shot = _write_side_files(cache, f"lru-{i}")
+        cache.store(
+            f"https://example.com/{i}", profile=None,
+            response=_response(
+                content="x" * 500, dump_path=dump, screenshot_path=shot,
+            ),
+        )
+    before = cache.stats()
+    cache.gc(max_total_bytes=before.total_bytes // 3)
+    # /0 was LRU so its files must be gone; the rest may or may not be
+    # depending on watermark — just assert no leak for the evicted one.
+    assert not (cache.dumps_dir / "lru-0.md").exists()
+    assert not (cache.screenshots_dir / "lru-0.png").exists()
+
+
+def test_unlink_skips_files_outside_cache_root(cache: Cache, fake_clock, tmp_path):
+    """Cache must not delete files that aren't under its dumps/
+    screenshots dirs — e.g. v0.2 dumps in ``~/.lightcrawl/dumps/``.
+    The byte accounting is informational; the user owns those files."""
+    foreign_dump = tmp_path / "outside.md"
+    foreign_dump.write_bytes(b"keep me")
+    foreign_shot = tmp_path / "outside.png"
+    foreign_shot.write_bytes(b"keep me too")
+    cache.store("https://example.com/x", profile=None, response=_response(
+        dump_path=str(foreign_dump), screenshot_path=str(foreign_shot),
+    ))
+    cache.delete("https://example.com/x", profile=None)
+    assert foreign_dump.exists()
+    assert foreign_shot.exists()
+
+
+# -- store() Router response-shape adapter ---------------------------------
+
+
+def test_store_accepts_router_envelope_with_status_in_metadata(cache: Cache, fake_clock):
+    """Router puts ``status_code`` under ``metadata``, not top-level.
+    Cache must extract it from there so the DB column reflects the real
+    response code (and PR 3's revalidation logic can trust it)."""
+    cache.store("https://example.com/x", profile=None, response={
+        "ok": True,
+        "url": "https://example.com/x",
+        "content": "body",
+        "metadata": {"status_code": 503, "content_type": "text/html"},
+        # No top-level status_code, no top-level headers.
+    })
+    import sqlite3 as _sqlite3
+    with _sqlite3.connect(cache.db_path) as conn:
+        row = conn.execute("SELECT status_code FROM entries").fetchone()
+    assert row[0] == 503
+
+
+def test_store_accepts_router_screenshots_list(cache: Cache, fake_clock, tmp_path):
+    """Router exposes screenshots as a list of stage dicts. Cache must
+    cache the ``stage="final"`` entry's path so screenshot fetches
+    survive a round-trip through the cache."""
+    final_shot = cache.screenshots_dir / "final.png"
+    final_shot.write_bytes(b"png bytes" * 100)
+    cache.store("https://example.com/x", profile=None, response={
+        "ok": True,
+        "url": "https://example.com/x",
+        "content": "body",
+        "screenshots": [
+            {"stage": "action", "index": 0, "label": "click", "path": str(tmp_path / "act.png")},
+            {"stage": "final", "path": str(final_shot)},
+        ],
+    })
+    hit = cache.lookup("https://example.com/x", profile=None, max_age_ms=60_000)
+    assert hit is not None
+    assert hit.screenshot_path == str(final_shot)
+    assert cache.stats().screenshot_bytes == final_shot.stat().st_size
+
+
+# -- defensive parsing -----------------------------------------------------
+
+
+def test_lookup_returns_none_on_corrupted_status_code(cache: Cache, fake_clock):
+    """A payload with ``status_code: "ok"`` should not crash lookup —
+    int() raises ValueError which the corrupted-payload guard catches."""
+    from lightcrawl.canonical import canonicalize_url, url_hash
+    url = "https://example.com/corrupt"
+    cache.store(url, profile=None, response=_response())
+    key = url_hash(canonicalize_url(url), profile=None)
+    payload_path = cache.payloads_dir / f"{key}.json"
+    data = json.loads(payload_path.read_text())
+    data["status_code"] = "not an int"
+    payload_path.write_text(json.dumps(data))
+    assert cache.lookup(url, profile=None, max_age_ms=60_000) is None
+
+
+def test_store_cleans_up_tmp_on_write_failure(cache: Cache, fake_clock, monkeypatch):
+    """If ``write_bytes`` raises mid-write, the ``.tmp`` file must not
+    be left behind to pile up across retries."""
+    from pathlib import Path as _P
+
+    def boom(self, data):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(_P, "write_bytes", boom)
+    with pytest.raises(OSError):
+        cache.store("https://example.com/x", profile=None, response=_response())
+    tmps = list(cache.payloads_dir.glob("*.tmp"))
+    assert tmps == [], f"orphan tmp files: {tmps}"
 
 
 # -- canonicalization (light sanity — exhaustive coverage in test_canonical) -
