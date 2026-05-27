@@ -701,7 +701,7 @@ def _success_from_cache(
     same provenance shape as the live paths.
     """
     cache_attempt = Attempt("cache", "hit")
-    return {
+    result: dict = {
         "ok": True,
         "url": req.url,
         "final_url": hit.final_url or req.url,
@@ -718,6 +718,13 @@ def _success_from_cache(
         "attempts": [a.to_dict() for a in attempts] + [cache_attempt.to_dict()],
         "headings": hit.headings,
     }
+    # A `--screenshot` fetch stores only the final image path; replay it
+    # in the same `screenshots` list shape `_success_from_browser` emits
+    # so a cache hit doesn't silently drop the screenshot. Intermediate
+    # action screenshots aren't cached, so only the `final` stage appears.
+    if hit.screenshot_path:
+        result["screenshots"] = [{"stage": "final", "path": hit.screenshot_path}]
+    return result
 
 
 def _success_from_http(

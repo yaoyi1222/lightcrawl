@@ -207,6 +207,39 @@ async def test_cache_only_hits_after_populated(router: Router, fake_clock):
     assert fetch_mock.call_count == 1  # cache_only never went back to net
 
 
+# -- screenshot survives a cache hit --------------------------------------
+
+
+async def test_cache_hit_surfaces_screenshot(router: Router, fake_clock, tmp_path):
+    """A ``--screenshot`` fetch stored in the cache must replay its
+    screenshot on a cache hit. The cache records ``screenshot_path``; the
+    cache-hit envelope has to surface it as a ``screenshots`` list with the
+    same ``{stage: "final", path}`` shape ``_success_from_browser`` emits,
+    otherwise the image is silently lost on every hit."""
+    shot = tmp_path / "shot.png"
+    shot.write_bytes(b"\x89PNG\r\n\x1a\n fake png bytes")
+    router.cache.store(
+        "https://example.com/", profile=None,
+        response={
+            "ok": True, "url": "https://example.com/",
+            "final_url": "https://example.com/",
+            "title": "T", "content": "",  # screenshot format yields empty body
+            "content_truncated": False, "status_code": 200,
+            "headers": {}, "headings": [], "metadata": {},
+            "screenshots": [{"stage": "final", "path": str(shot)}],
+        },
+    )
+    with patch("lightcrawl.url_safety.socket.gethostbyname", return_value="93.184.216.34"), \
+         patch("lightcrawl.fetch_http.fetch") as fetch_mock:
+        out = await router.fetch(FetchRequest(
+            url="https://example.com/", cache_only=True,
+        ))
+    assert out["ok"] is True
+    assert out["strategy_used"] == "cache"
+    assert fetch_mock.called is False
+    assert out["screenshots"] == [{"stage": "final", "path": str(shot)}]
+
+
 # -- profile dimension (security boundary) --------------------------------
 
 
