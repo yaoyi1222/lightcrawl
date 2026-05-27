@@ -3,12 +3,14 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Literal
 from urllib.parse import urlparse
 
 from . import auth, content as content_mod, fetch_browser, fetch_http, fetch_pdf
+from .cache import Cache, CacheHit
 from .errors import ErrorCode, FetchError
 from .url_safety import domain_matches, validate_url
 
@@ -252,6 +254,13 @@ def _l1_incapable(req: FetchRequest) -> bool:
     return req.output_format in _SCREENSHOT_FORMATS or bool(req.actions)
 
 
+# PR 2.3 — ``cache_only=True`` with no explicit ``max_age_ms`` means
+# "accept whatever's cached regardless of age". Pass this sentinel into
+# Cache.lookup's ``max_age_ms`` so the ≤ check always passes; sys.maxsize
+# would work too but a defined constant reads better at the call site.
+_MAX_AGE_SENTINEL = 10**18  # ~31 billion years; effectively infinite
+
+
 def _should_escalate_to_browser(http_status: int, html: str) -> bool:
     if http_status in (403, 429, 503):
         return True
@@ -273,9 +282,67 @@ def _should_escalate_to_browser(http_status: int, html: str) -> bool:
 @dataclass
 class Router:
     pool: fetch_browser.BrowserPool = field(default_factory=fetch_browser.BrowserPool)
+    # v0.3 PR 2.3 — cache aspect. ``Cache(...)`` is constructed lazily so
+    # tests that monkeypatch ``lightcrawl.paths.CACHE_ROOT`` before
+    # building the Router see the patched root. Pass an explicit
+    # ``cache=Cache(root=tmp)`` to skip the lazy default in tests.
+    cache: Cache | None = None
+
+    def _get_cache(self) -> Cache:
+        if self.cache is None:
+            self.cache = Cache()
+        return self.cache
 
     async def close(self) -> None:
         await self.pool.close()
+
+    # -- cache aspect (PR 2.3 — design §2 / §5.2) ----------------------------
+
+    def _cache_lookup(self, req: FetchRequest) -> CacheHit | None:
+        """Try the cache before any network work.
+
+        Returns the hit, or ``None`` if the request explicitly opted out
+        (``no_cache``) or simply didn't ask to read (no ``max_age_ms``
+        and no ``cache_only``). The caller treats ``None`` as "go to
+        network" — except when ``cache_only=True``, where a miss should
+        surface as ``CACHE_MISS``; that branch lives in ``fetch()``.
+        """
+        if req.no_cache:
+            return None
+        if not req.cache_only and req.max_age_ms is None:
+            return None
+        # ``cache_only`` with no explicit max age means "use whatever's
+        # cached regardless of staleness". Pass a sentinel max-age that
+        # always passes the ≤ check; ``lookup`` will still touch
+        # accessed_at, which is the right LRU signal because the caller
+        # is committing to the cached body.
+        max_age = req.max_age_ms if req.max_age_ms is not None else _MAX_AGE_SENTINEL
+        return self._get_cache().lookup(req.url, profile=req.profile, max_age_ms=max_age)
+
+    def _cache_store_if_requested(self, req: FetchRequest, response: dict) -> dict:
+        """Write to cache after a successful fetch if the request asked
+        for it. Returns the response unchanged so call sites can chain.
+
+        Failure to write is swallowed: the response goes out the door
+        either way. Cache is a best-effort optimisation, not a hard
+        dependency — surfacing a cache write error to the user would
+        make the contract worse, not better.
+        """
+        if req.no_cache or not req.store_in_cache:
+            return response
+        if not response.get("ok"):
+            return response
+        try:
+            self._get_cache().store(req.url, profile=req.profile, response=response)
+        except (OSError, sqlite3.Error):
+            # Best-effort: a disk-full / WAL-contention / permission error
+            # shouldn't fail an otherwise-successful fetch. Narrowed from
+            # bare ``Exception`` so programming errors (TypeError from a
+            # bad response shape, etc.) still surface. PR 2.5 adds a
+            # multiprocess-WAL contention test as the main shake-out for
+            # write reliability.
+            pass
+        return response
 
     async def fetch(self, req: FetchRequest) -> dict:
         # Bug 9: reject obvious binary URLs before any network call so the
@@ -298,14 +365,33 @@ class Router:
 
         attempts: list[Attempt] = []
 
+        # PR 2.3 — cache entry hook. SSRF and binary checks above run
+        # unconditionally; only after we know the URL is safe do we
+        # consult cache. Profile checks (L3 path below) happen AFTER
+        # cache because url_hash is profile-dimensional — a no-profile
+        # caller can't accidentally read a profile-bound entry.
+        cache_hit = self._cache_lookup(req)
+        if cache_hit is not None:
+            return _success_from_cache(req, cache_hit, attempts)
+        if req.cache_only:
+            return _failure(
+                req.url, ErrorCode.CACHE_MISS,
+                "cache_only=True and no entry within max_age_ms",
+                attempts=[],
+            )
+
         # PDF dispatch: detect .pdf path, download + extract text via pypdf.
         # Must come AFTER SSRF check above. L1-only in v0.2 (no L2 fallback).
         if _looks_like_pdf_url(req.url):
-            return await self._fetch_pdf_route(req, attempts)
+            return self._cache_store_if_requested(
+                req, await self._fetch_pdf_route(req, attempts),
+            )
 
         # L3 path: explicit profile
         if req.profile or req.strategy == "authed":
-            return await self._fetch_authed(req, resolved.etld1, attempts)
+            return self._cache_store_if_requested(
+                req, await self._fetch_authed(req, resolved.etld1, attempts),
+            )
 
         # PR 2: physical L1 incapability (screenshot today; actions / block_ads
         # later). Must come AFTER `_looks_like_binary_url` + `validate_url`
@@ -314,7 +400,9 @@ class Router:
         # surfaces as a downstream UNSUPPORTED_CONTENT_TYPE / empty-screenshot
         # response rather than silently re-routing to L2.
         if _l1_incapable(req) and req.strategy != "http":
-            return await self._fetch_browser_only(req, attempts, storage_state=None)
+            return self._cache_store_if_requested(
+                req, await self._fetch_browser_only(req, attempts, storage_state=None),
+            )
 
         # Forced strategies
         if req.strategy == "http":
@@ -326,9 +414,13 @@ class Router:
                     "Remove --strategy http or drop --actions.",
                     attempts,
                 )
-            return await self._fetch_http_only(req, attempts)
+            return self._cache_store_if_requested(
+                req, await self._fetch_http_only(req, attempts),
+            )
         if req.strategy == "browser":
-            return await self._fetch_browser_only(req, attempts, storage_state=None)
+            return self._cache_store_if_requested(
+                req, await self._fetch_browser_only(req, attempts, storage_state=None),
+            )
 
         # Auto: try L1, escalate to L2 on signals
         l1_timeout = min(8.0, req.timeout_ms / 1000.0)
@@ -341,11 +433,15 @@ class Router:
             )
         except asyncio.TimeoutError:
             attempts.append(Attempt("http", "timeout"))
-            return await self._fetch_browser_only(req, attempts, storage_state=None)
+            return self._cache_store_if_requested(
+                req, await self._fetch_browser_only(req, attempts, storage_state=None),
+            )
         except FetchError as e:
             attempts.append(Attempt("http", e.code.value.lower()))
             if e.code in (ErrorCode.HTTP_ERROR, ErrorCode.TIMEOUT):
-                return await self._fetch_browser_only(req, attempts, storage_state=None)
+                return self._cache_store_if_requested(
+                    req, await self._fetch_browser_only(req, attempts, storage_state=None),
+                )
             return _failure(req.url, e.code, e.detail, attempts)
 
         attempts.append(Attempt("http", str(r.status_code)))
@@ -363,11 +459,14 @@ class Router:
             return _login_required(req.url, attempts)
 
         if _should_escalate_to_browser(r.status_code, r.text):
-            return await self._fetch_browser_only(
-                req, attempts, storage_state=None, prior=r
+            return self._cache_store_if_requested(
+                req,
+                await self._fetch_browser_only(req, attempts, storage_state=None, prior=r),
             )
 
-        return _success_from_http(req, r, extracted, attempts, "http")
+        return self._cache_store_if_requested(
+            req, _success_from_http(req, r, extracted, attempts, "http"),
+        )
 
     # -- helpers --
 
@@ -587,6 +686,45 @@ class Router:
 
 
 # -- response shapers --
+
+
+def _success_from_cache(
+    req: FetchRequest, hit: CacheHit, attempts: list[Attempt],
+) -> dict:
+    """Build the same response envelope as a fresh fetch from a CacheHit.
+
+    ``strategy_used="cache"`` and ``cache_hit=True`` give callers a clean
+    way to tell the response apart from a live fetch — useful for crawl
+    progress counters (design §5.5 ``pages_skipped_cache``) and for
+    agents that want to redo a fetch with ``--no-cache`` when they need
+    fresh content. Attempts list is updated so the response carries the
+    same provenance shape as the live paths.
+    """
+    cache_attempt = Attempt("cache", "hit")
+    result: dict = {
+        "ok": True,
+        "url": req.url,
+        "final_url": hit.final_url or req.url,
+        "strategy_used": "cache",
+        "cache_hit": True,
+        "cache_age_ms": hit.age_ms,
+        "cache_fetched_at_ms": hit.fetched_at_ms,
+        "fetched_at": _now_iso(),
+        "title": hit.title,
+        "content": hit.markdown,
+        "content_truncated": hit.content_truncated,
+        "dump_path": hit.dump_path,
+        "metadata": hit.metadata,
+        "attempts": [a.to_dict() for a in attempts] + [cache_attempt.to_dict()],
+        "headings": hit.headings,
+    }
+    # A `--screenshot` fetch stores only the final image path; replay it
+    # in the same `screenshots` list shape `_success_from_browser` emits
+    # so a cache hit doesn't silently drop the screenshot. Intermediate
+    # action screenshots aren't cached, so only the `final` stage appears.
+    if hit.screenshot_path:
+        result["screenshots"] = [{"stage": "final", "path": hit.screenshot_path}]
+    return result
 
 
 def _success_from_http(
