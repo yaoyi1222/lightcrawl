@@ -352,3 +352,33 @@ def test_list_backends_calls_close_for_cleanup_uniformity():
         rc, _ = _run(["list-backends"])
     assert rc == 0
     close_mock.assert_awaited_once()
+
+
+# -- map --------------------------------------------------------------------
+
+
+def test_map_serializes_result_and_passes_flags():
+    """The CLI's job is flag parsing + MapResult serialization; run_map is
+    unit-tested separately in test_sitemap.py, so stub it here."""
+    from lightcrawl.sitemap import MapResult, SitemapEntry
+
+    res = MapResult(
+        source="sitemap",
+        urls=[SitemapEntry("https://ex.com/a", None, None, None)],
+        count=1,
+        notes=None,
+    )
+    fake = AsyncMock(return_value=res)
+    with patch("lightcrawl.cli.sitemap.run_map", fake), \
+         patch("lightcrawl.cli.Router") as RouterCls:
+        RouterCls.return_value.close = AsyncMock()
+        rc, out = _run(["map", "https://ex.com/", "--search", "docs", "--limit", "10"])
+    assert rc == 0
+    assert out["ok"] is True
+    assert out["source"] == "sitemap"
+    assert out["count"] == 1
+    assert out["urls"][0]["url"] == "https://ex.com/a"
+    assert "notes" not in out  # None notes are omitted from the envelope
+    _, kwargs = fake.call_args
+    assert kwargs["search_filter"] == "docs"
+    assert kwargs["limit"] == 10

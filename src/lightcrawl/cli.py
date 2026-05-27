@@ -6,7 +6,7 @@ import json
 import re
 import sys
 
-from . import auth
+from . import auth, sitemap
 from .errors import ErrorCode, FetchError
 from .paths import ensure_dirs
 from .router import FetchRequest, Router, WaitForArg
@@ -423,6 +423,29 @@ async def _run_search_and_read(args: argparse.Namespace) -> int:
     return _exit_code(result)
 
 
+# -- map --------------------------------------------------------------------
+
+
+def _cmd_map(args: argparse.Namespace) -> int:
+    return _safe_run(_run_map(args))
+
+
+async def _run_map(args: argparse.Namespace) -> int:
+    router = Router()
+    try:
+        result = await sitemap.run_map(
+            args.url,
+            search_filter=args.search,
+            limit=args.limit,
+            router=router,
+        )
+    finally:
+        await router.close()
+    payload = result.to_dict()
+    _print(payload)
+    return _exit_code(payload)
+
+
 def _cmd_list_backends(_: argparse.Namespace) -> int:
     return _safe_run(_run_list_backends())
 
@@ -623,6 +646,23 @@ def _add_search_and_read_parser(sub: argparse._SubParsersAction) -> None:
     p.set_defaults(func=_cmd_search_and_read)
 
 
+def _add_map_parser(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser(
+        "map",
+        help="List reachable in-domain URLs (sitemap-first, homepage fallback)",
+    )
+    p.add_argument("url", help="seed URL; its scheme+host define the domain")
+    p.add_argument(
+        "--search", default=None,
+        help="case-insensitive substring filter on discovered URLs",
+    )
+    p.add_argument(
+        "--limit", type=int, default=None,
+        help="cap the number of URLs returned (default: all, up to 50k)",
+    )
+    p.set_defaults(func=_cmd_map)
+
+
 def _add_list_backends_parser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser(
         "list-backends",
@@ -669,6 +709,7 @@ def main(argv: list[str] | None = None) -> int:
     _add_fetch_parser(sub)
     _add_search_parser(sub)
     _add_search_and_read_parser(sub)
+    _add_map_parser(sub)
     _add_list_backends_parser(sub)
     _add_auth_parser(sub)
 
