@@ -189,3 +189,35 @@ def test_load_skips_corrupt_visited_lines(tmp_path, monkeypatch):
         f.write("garbage-no-tabs\n")
     loaded = jobs.Job.load(job.job_id, jobs_dir=tmp_path)
     assert loaded.claimed == {"https://ex.com/a"}
+
+
+def test_record_success_marks_completed_and_counts(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 5)
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)
+    job.record({"ok": True, "url": "https://ex.com/a",
+                "metadata": {"status_code": 200}, "cache_hit": True})
+    assert job.progress.pages_fetched == 1
+    assert "https://ex.com/a" in job.completed
+    line = json.loads(job.results_path.read_text().splitlines()[0])
+    assert line["ok"] is True and line["cache_hit"] is True and line["status"] == 200
+
+
+def test_record_failure_counts_and_tails_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 5)
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)
+    job.record({"ok": False, "url": "https://ex.com/x", "error_code": "TIMEOUT"})
+    assert job.progress.pages_failed == 1
+    assert "https://ex.com/x" not in job.completed
+    assert job.errors_tail[-1]["error_code"] == "TIMEOUT"
+    line = json.loads(job.results_path.read_text().splitlines()[0])
+    assert line["ok"] is False and line["error_code"] == "TIMEOUT"
+
+
+def test_errors_tail_capped_at_50(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 5)
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)
+    for i in range(60):
+        job.record({"ok": False, "url": f"https://ex.com/{i}", "error_code": "TIMEOUT"})
+    assert len(job.errors_tail) == 50
+    assert job.errors_tail[-1]["url"] == "https://ex.com/59"
+    assert job.progress.pages_failed == 60

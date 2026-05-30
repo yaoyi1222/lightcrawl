@@ -233,3 +233,36 @@ class Job:
                 self.claimed.add(url)
             elif status == "completed":
                 self.completed.add(url)
+
+    # -- results -----------------------------------------------------------
+    def record(self, result: dict) -> None:
+        """Persist one fetch outcome: append to results.jsonl, update the
+        claimed/completed set + progress counters, and (on failure) push a
+        capped errors_tail entry. Triggers a throttled flush."""
+        url = result.get("final_url") or result.get("url") or ""
+        ok = bool(result.get("ok"))
+        now = time_ms()
+        line = {
+            "url": url,
+            "ok": ok,
+            "status": (result.get("metadata") or {}).get("status_code") if ok else None,
+            "error_code": result.get("error_code"),
+            "cache_hit": bool(result.get("cache_hit")),
+            "fetched_at": now,
+        }
+        with self.results_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(line, ensure_ascii=False) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+        if ok:
+            self.mark_completed(url)
+            self.progress.pages_fetched += 1
+        else:
+            self.progress.pages_failed += 1
+            self.errors_tail.append(
+                {"url": url, "error_code": result.get("error_code"), "at": now}
+            )
+            if len(self.errors_tail) > _ERRORS_TAIL_MAX:
+                self.errors_tail = self.errors_tail[-_ERRORS_TAIL_MAX:]
+        self._pages_since_flush += 1
+        self.flush()
