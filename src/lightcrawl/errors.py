@@ -24,6 +24,9 @@ class ErrorCode(str, Enum):
     CACHE_MISS = "CACHE_MISS"                  # cache_only=True and no hit
     CACHE_CORRUPT = "CACHE_CORRUPT"            # payload / index disagree
     CACHE_FLAG_CONFLICT = "CACHE_FLAG_CONFLICT"  # mutually exclusive CLI flags
+    # PR 4 — sitemap/map. A parse failure on one sitemap is a soft signal:
+    # `run_map` downgrades to the homepage-link fallback rather than failing.
+    SITEMAP_PARSE_ERROR = "SITEMAP_PARSE_ERROR"
     UNKNOWN = "UNKNOWN"
 
 
