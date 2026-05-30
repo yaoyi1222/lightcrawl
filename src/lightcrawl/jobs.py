@@ -174,6 +174,27 @@ class Job:
         job._load_frontier()
         return job
 
+    @classmethod
+    def resume(cls, job_id: str, *, jobs_dir: Path | None = None) -> "Job":
+        """Reopen an ``interrupted`` job: re-enqueue every URL that was claimed
+        but never completed (second chance for transient failures), claim a
+        fresh owner pid, and set status running. Non-interrupted → not
+        resumable; absent → not found (both via ``load``)."""
+        job = cls.load(job_id, jobs_dir=jobs_dir)
+        if job.status != JobStatus.INTERRUPTED:
+            raise FetchError(
+                ErrorCode.JOB_NOT_RESUMABLE,
+                f"{job_id}: status is {job.status.value}, only 'interrupted' resumes",
+            )
+        pending = {it.url for it in job._frontier}
+        for url in job.claimed - job.completed:
+            if url not in pending:
+                job.push_frontier(FrontierItem(url, 0))
+        job.status = JobStatus.RUNNING
+        write_pid_file(job.pid_path)
+        job.flush(force=True)
+        return job
+
     # -- flush -------------------------------------------------------------
     def _to_json(self) -> dict:
         return {

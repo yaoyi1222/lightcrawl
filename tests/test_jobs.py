@@ -259,3 +259,44 @@ def test_frontier_compacts_past_threshold(tmp_path, monkeypatch):
     assert len(lines) < 14
     loaded = jobs.Job.load(job.job_id, jobs_dir=tmp_path)
     assert [it.url for it in loaded._frontier] == ["https://ex.com/6", "https://ex.com/7"]
+
+
+def test_resume_requires_interrupted_status(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 5)
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)  # status running
+    with pytest.raises(FetchError) as ei:
+        jobs.Job.resume(job.job_id, jobs_dir=tmp_path)
+    assert ei.value.code == ErrorCode.JOB_NOT_RESUMABLE
+
+
+def test_resume_missing_job_raises_not_found(tmp_path):
+    with pytest.raises(FetchError) as ei:
+        jobs.Job.resume("crawl-nope", jobs_dir=tmp_path)
+    assert ei.value.code == ErrorCode.JOB_NOT_FOUND
+
+
+def test_resume_reenqueues_claimed_not_completed(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 5)
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)
+    job.mark_claimed("https://ex.com/a")
+    job.mark_completed("https://ex.com/a")  # done
+    job.mark_claimed("https://ex.com/b")     # claimed but never completed
+    job.status = JobStatus.INTERRUPTED
+    job.flush(force=True)
+    resumed = jobs.Job.resume(job.job_id, jobs_dir=tmp_path)
+    assert resumed.status == JobStatus.RUNNING
+    urls = [it.url for it in resumed._frontier]
+    assert "https://ex.com/b" in urls
+    assert "https://ex.com/a" not in urls
+    assert (tmp_path / f"{job.job_id}.pid").exists()  # fresh owner pid
+
+
+def test_resume_does_not_double_enqueue_existing_frontier(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 5)
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)
+    job.push_frontier(FrontierItem("https://ex.com/b", 0))  # already pending
+    job.mark_claimed("https://ex.com/b")
+    job.status = JobStatus.INTERRUPTED
+    job.flush(force=True)
+    resumed = jobs.Job.resume(job.job_id, jobs_dir=tmp_path)
+    assert [it.url for it in resumed._frontier].count("https://ex.com/b") == 1
