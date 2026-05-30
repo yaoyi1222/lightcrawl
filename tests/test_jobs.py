@@ -125,3 +125,34 @@ def test_flush_is_atomic_leaves_no_tmp(tmp_path, monkeypatch):
     job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)
     job.flush(force=True)
     assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_flush_throttle_suppresses_until_due(tmp_path, monkeypatch):
+    clock = {"t": 10_000}
+    monkeypatch.setattr(jobs, "time_ms", lambda: clock["t"])
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)  # force flush at 10_000
+    first = json.loads(job.json_path.read_text())["updated_at"]
+    assert first == 10_000
+    # 2s later, 0 pages → throttled, no rewrite
+    clock["t"] = 12_000
+    job.flush()
+    assert json.loads(job.json_path.read_text())["updated_at"] == 10_000
+    # 5s after last flush → time threshold fires
+    clock["t"] = 15_000
+    job.flush()
+    assert json.loads(job.json_path.read_text())["updated_at"] == 15_000
+
+
+def test_flush_pages_threshold_fires(tmp_path, monkeypatch):
+    clock = {"t": 0}
+    monkeypatch.setattr(jobs, "time_ms", lambda: clock["t"])
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)
+    # 9 pages within the time window → still throttled
+    job._pages_since_flush = 9
+    clock["t"] = 1_000
+    job.flush()
+    assert json.loads(job.json_path.read_text())["updated_at"] == 0
+    # 10th page → page threshold fires even though <5s elapsed
+    job._pages_since_flush = 10
+    job.flush()
+    assert json.loads(job.json_path.read_text())["updated_at"] == 1_000
