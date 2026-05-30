@@ -16,12 +16,16 @@ CLI subcommands live in ``crawl.py`` (PR 6).
 
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
 from typing import NamedTuple
+
+import psutil
 
 
 def time_ms() -> int:
@@ -67,3 +71,24 @@ def new_job_id(prefix: str = "crawl") -> str:
     (Windows NTFS). 12 hex chars → ~1/2⁴⁸ collision (design B4)."""
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     return f"{prefix}-{ts}-{uuid.uuid4().hex[:12]}"
+
+
+def write_pid_file(path: Path) -> None:
+    """Write ``{pid, create_time}`` for the current process. create_time is a
+    cross-platform float (psutil), used to defeat PID reuse on reconcile."""
+    me = psutil.Process()
+    path.write_text(json.dumps({"pid": me.pid, "create_time": me.create_time()}))
+
+
+def is_owner_alive(path: Path) -> bool:
+    """True only if the pid in ``path`` is running AND its create_time matches
+    (within 0.01s). Missing/corrupt file or NoSuchProcess → dead owner."""
+    try:
+        data = json.loads(path.read_text())
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return False
+    try:
+        proc = psutil.Process(int(data["pid"]))
+        return abs(proc.create_time() - float(data["create_time"])) < 0.01
+    except (psutil.NoSuchProcess, KeyError, ValueError, TypeError):
+        return False

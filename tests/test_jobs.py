@@ -52,3 +52,37 @@ def test_job_status_values():
     assert {s.value for s in JobStatus} == {
         "created", "running", "completed", "interrupted", "cancelled",
     }
+
+
+def test_pid_file_roundtrip_alive(tmp_path):
+    p = tmp_path / "x.pid"
+    jobs.write_pid_file(p)
+    assert jobs.is_owner_alive(p) is True  # written by this live process
+
+
+def test_pid_missing_is_dead(tmp_path):
+    assert jobs.is_owner_alive(tmp_path / "nope.pid") is False
+
+
+def test_pid_corrupt_is_dead(tmp_path):
+    p = tmp_path / "bad.pid"
+    p.write_text("{not json")
+    assert jobs.is_owner_alive(p) is False
+
+
+def test_pid_create_time_mismatch_is_dead(tmp_path):
+    # PID-reuse immunity: same pid, different create_time → original owner dead.
+    import json as _json
+
+    import psutil
+    p = tmp_path / "reuse.pid"
+    me = psutil.Process()
+    p.write_text(_json.dumps({"pid": me.pid, "create_time": me.create_time() + 5.0}))
+    assert jobs.is_owner_alive(p) is False
+
+
+def test_pid_unknown_process_is_dead(tmp_path):
+    import json as _json
+    p = tmp_path / "ghost.pid"
+    p.write_text(_json.dumps({"pid": 2_147_483_646, "create_time": 1.0}))
+    assert jobs.is_owner_alive(p) is False
