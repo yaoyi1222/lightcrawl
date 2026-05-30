@@ -23,3 +23,32 @@ def test_paths_has_jobs_dir():
 
 def test_psutil_importable():
     import psutil  # noqa: F401
+
+
+import re  # noqa: E402
+
+from lightcrawl import jobs  # noqa: E402
+from lightcrawl.jobs import FrontierItem, JobStatus, Progress  # noqa: E402
+
+
+def test_new_job_id_format_and_no_colon():
+    jid = jobs.new_job_id()
+    assert re.fullmatch(r"crawl-\d{8}T\d{6}-[0-9a-f]{12}", jid)
+    assert ":" not in jid  # Windows NTFS safe
+
+
+def test_progress_defaults_zero():
+    p = Progress()
+    assert (p.pages_fetched, p.pages_failed, p.pages_pending) == (0, 0, 0)
+    assert (p.pages_skipped_cache, p.pages_skipped_robots, p.pages_skipped_filter) == (0, 0, 0)
+
+
+def test_frontier_item_is_url_depth():
+    it = FrontierItem("https://ex.com/a", 2)
+    assert it.url == "https://ex.com/a" and it.depth == 2
+
+
+def test_job_status_values():
+    assert {s.value for s in JobStatus} == {
+        "created", "running", "completed", "interrupted", "cancelled",
+    }
