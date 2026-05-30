@@ -16,6 +16,10 @@ dependencies = [
     "httpx>=0.27.0",
     "tomli>=2.0.0; python_version<'3.11'",
     "pypdf>=4.0",
+    # psutil — cross-platform PID + create_time liveness for crawl job
+    # reconcile (v0.3 PR 5, design §5.4). Avoids fcntl/flock edge cases on
+    # Windows / antivirus / OneDrive-synced dirs (review B5).
+    "psutil>=5.9",
 ]
 
 [project.optional-dependencies]

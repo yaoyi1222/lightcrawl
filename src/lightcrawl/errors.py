@@ -27,6 +27,10 @@ class ErrorCode(str, Enum):
     # PR 4 — sitemap/map. A parse failure on one sitemap is a soft signal:
     # `run_map` downgrades to the homepage-link fallback rather than failing.
     SITEMAP_PARSE_ERROR = "SITEMAP_PARSE_ERROR"
+    # PR 5 — crawl jobs. Raised by the jobs data layer's load/resume
+    # validation; PR 6's crawl-status/resume/cancel subcommands consume them.
+    JOB_NOT_FOUND = "JOB_NOT_FOUND"
+    JOB_NOT_RESUMABLE = "JOB_NOT_RESUMABLE"
     UNKNOWN = "UNKNOWN"
 
 
