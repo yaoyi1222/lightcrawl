@@ -18,11 +18,16 @@ CACHE_PAYLOADS = CACHE_ROOT / "payloads"
 CACHE_DUMPS = CACHE_ROOT / "dumps"
 CACHE_SCREENSHOTS = CACHE_ROOT / "screenshots"
 
+# v0.3 PR 5 — crawl job state. One file-set per job under jobs/<job_id>.*
+# (json/pid/cancel/visited.txt/frontier.jsonl/results.jsonl). See design §5.4.
+JOBS = ROOT / "jobs"
+
 
 def ensure_dirs() -> None:
     for d in (
         ROOT, DUMPS, PROFILES, LOGS, SCREENSHOTS,
         CACHE_ROOT, CACHE_PAYLOADS, CACHE_DUMPS, CACHE_SCREENSHOTS,
+        JOBS,
     ):
         d.mkdir(parents=True, exist_ok=True)
         d.chmod(0o700)
