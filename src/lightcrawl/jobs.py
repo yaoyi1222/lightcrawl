@@ -94,7 +94,9 @@ def is_owner_alive(path: Path) -> bool:
     try:
         proc = psutil.Process(int(data["pid"]))
         return abs(proc.create_time() - float(data["create_time"])) < 0.01
-    except (psutil.NoSuchProcess, KeyError, ValueError, TypeError):
+    except (psutil.NoSuchProcess, psutil.AccessDenied, KeyError, ValueError, TypeError):
+        # AccessDenied: a recycled PID now owned by a privileged process —
+        # treat as a dead original owner, never let it escape to reconcile.
         return False
 
 
@@ -109,9 +111,12 @@ def reconcile_jobs(jobs_dir: Path | None = None) -> list[str]:
     flipped: list[str] = []
     for json_path in jobs_dir.glob("*.json"):
         try:
-            data = json.loads(json_path.read_text())
+            data = json.loads(json_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             continue
+        job_id = data.get("job_id")
+        if not job_id:
+            continue  # externally-edited file with no id — skip, don't abort
         if data.get("status") != JobStatus.RUNNING.value:
             continue
         pid_path = json_path.with_suffix("").with_suffix(".pid")
@@ -120,9 +125,9 @@ def reconcile_jobs(jobs_dir: Path | None = None) -> list[str]:
         data["status"] = JobStatus.INTERRUPTED.value
         data["updated_at"] = time_ms()
         tmp = json_path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False))
+        tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp, json_path)
-        flipped.append(data["job_id"])
+        flipped.append(job_id)
     return flipped
 
 
@@ -188,7 +193,7 @@ class Job:
         jobs_dir = jobs_dir or paths.JOBS
         json_path = jobs_dir / f"{job_id}.json"
         try:
-            data = json.loads(json_path.read_text())
+            data = json.loads(json_path.read_text(encoding="utf-8"))
         except (FileNotFoundError, json.JSONDecodeError) as e:
             raise FetchError(ErrorCode.JOB_NOT_FOUND, f"{job_id}: {e}") from e
         job = cls(data["job_id"], data["type"], data.get("params", {}), jobs_dir=jobs_dir)

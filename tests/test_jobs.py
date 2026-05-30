@@ -370,3 +370,42 @@ def test_reconcile_ignores_terminal_jobs(tmp_path, monkeypatch):
     flipped = jobs.reconcile_jobs(jobs_dir=tmp_path)
     assert flipped == []
     assert json.loads(job.json_path.read_text())["status"] == "completed"
+
+
+# -- review #60 fixes ------------------------------------------------------
+
+
+def test_is_owner_alive_treats_access_denied_as_dead(tmp_path, monkeypatch):
+    # A recycled PID owned by a privileged process raises AccessDenied on
+    # create_time(); that must read as a dead owner, not propagate.
+    p = tmp_path / "x.pid"
+    jobs.write_pid_file(p)
+
+    class _Denied:
+        def __init__(self, pid):
+            pass
+
+        def create_time(self):
+            raise jobs.psutil.AccessDenied(pid=1)
+
+    monkeypatch.setattr(jobs.psutil, "Process", _Denied)
+    assert jobs.is_owner_alive(p) is False
+
+
+def test_reconcile_skips_json_missing_job_id(tmp_path):
+    # A structurally valid running job file with no "job_id" must be skipped,
+    # not abort the whole scan with KeyError.
+    (tmp_path / "crawl-bad.json").write_text(json.dumps({"status": "running"}))
+    flipped = jobs.reconcile_jobs(jobs_dir=tmp_path)  # must not raise
+    assert flipped == []
+
+
+def test_job_json_roundtrips_non_ascii_utf8(tmp_path, monkeypatch):
+    # Regression guard: JSON must round-trip non-ASCII via UTF-8 on every
+    # platform (on Windows the default encoding is cp1252, which corrupts it).
+    monkeypatch.setattr(jobs, "time_ms", lambda: 5)
+    job = jobs.Job.create("crawl", {"seed": "https://例え.jp/ünïcode"}, jobs_dir=tmp_path)
+    raw = job.json_path.read_bytes().decode("utf-8")  # must decode cleanly
+    assert "例え" in raw
+    loaded = jobs.Job.load(job.job_id, jobs_dir=tmp_path)
+    assert loaded.params == {"seed": "https://例え.jp/ünïcode"}
