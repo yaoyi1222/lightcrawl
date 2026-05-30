@@ -300,3 +300,44 @@ def test_resume_does_not_double_enqueue_existing_frontier(tmp_path, monkeypatch)
     job.flush(force=True)
     resumed = jobs.Job.resume(job.job_id, jobs_dir=tmp_path)
     assert [it.url for it in resumed._frontier].count("https://ex.com/b") == 1
+
+
+def test_should_stop_on_shutdown_flag(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 5)
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)
+    assert job.should_stop() is False
+    job.request_shutdown("interrupted")
+    assert job.should_stop() is True
+
+
+def test_should_stop_on_cancel_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 5)
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)
+    job.cancel_path.write_text("")
+    assert job.should_stop() is True
+
+
+def test_finalize_completed_removes_pid(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 9)
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)
+    job.finalize()
+    assert job.status == JobStatus.COMPLETED
+    assert job.completed_at == 9
+    assert not job.pid_path.exists()
+    assert json.loads(job.json_path.read_text())["status"] == "completed"
+
+
+def test_finalize_interrupted_on_shutdown(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 9)
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)
+    job.request_shutdown("interrupted")
+    job.finalize()
+    assert job.status == JobStatus.INTERRUPTED
+
+
+def test_finalize_cancelled_when_cancel_file_present(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 9)
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)
+    job.cancel_path.write_text("")
+    job.finalize()
+    assert job.status == JobStatus.CANCELLED

@@ -334,3 +334,28 @@ class Job:
                 self._frontier.append(FrontierItem(op["url"], op.get("depth", 0)))
             elif op.get("op") == "pop" and self._frontier:
                 self._frontier.pop(0)
+
+    # -- control -----------------------------------------------------------
+    def request_shutdown(self, reason: str) -> None:
+        """Set by a signal handler (PR 6) or cancel path. ``reason`` is one of
+        'interrupted' / 'cancelled'; the main loop polls ``should_stop``."""
+        self._shutdown_reason = reason
+
+    def should_stop(self) -> bool:
+        return self._shutdown_reason is not None or self.cancel_path.exists()
+
+    def finalize(self) -> None:
+        """Resolve the terminal status, flush, and drop the pid file. A present
+        ``.cancel`` file (remote cancel) wins over a SIGINT shutdown reason."""
+        if self.cancel_path.exists() or self._shutdown_reason == "cancelled":
+            self.status = JobStatus.CANCELLED
+        elif self._shutdown_reason == "interrupted":
+            self.status = JobStatus.INTERRUPTED
+        else:
+            self.status = JobStatus.COMPLETED
+        self.completed_at = time_ms()
+        self.flush(force=True)
+        try:
+            self.pid_path.unlink()
+        except FileNotFoundError:
+            pass
