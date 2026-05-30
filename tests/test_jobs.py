@@ -86,3 +86,42 @@ def test_pid_unknown_process_is_dead(tmp_path):
     p = tmp_path / "ghost.pid"
     p.write_text(_json.dumps({"pid": 2_147_483_646, "create_time": 1.0}))
     assert jobs.is_owner_alive(p) is False
+
+
+from lightcrawl.errors import FetchError  # noqa: E402
+
+
+def test_create_writes_json_and_pid_running(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 1_000)
+    job = jobs.Job.create("crawl", {"seed": "https://ex.com/"}, jobs_dir=tmp_path)
+    assert job.status == JobStatus.RUNNING
+    data = json.loads((tmp_path / f"{job.job_id}.json").read_text())
+    assert data["status"] == "running"
+    assert data["type"] == "crawl"
+    assert data["params"] == {"seed": "https://ex.com/"}
+    assert data["started_at"] == 1_000
+    assert (tmp_path / f"{job.job_id}.pid").exists()
+
+
+def test_load_roundtrips_progress_and_params(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 2_000)
+    job = jobs.Job.create("crawl", {"seed": "https://ex.com/"}, jobs_dir=tmp_path)
+    job.progress.pages_fetched = 7
+    job.flush(force=True)
+    loaded = jobs.Job.load(job.job_id, jobs_dir=tmp_path)
+    assert loaded.progress.pages_fetched == 7
+    assert loaded.params == {"seed": "https://ex.com/"}
+    assert loaded.status == JobStatus.RUNNING
+
+
+def test_load_missing_raises_job_not_found(tmp_path):
+    with pytest.raises(FetchError) as ei:
+        jobs.Job.load("crawl-nope", jobs_dir=tmp_path)
+    assert ei.value.code == ErrorCode.JOB_NOT_FOUND
+
+
+def test_flush_is_atomic_leaves_no_tmp(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 3_000)
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)
+    job.flush(force=True)
+    assert not list(tmp_path.glob("*.tmp"))
