@@ -233,6 +233,7 @@ async def run_map(
     ``limit`` truncation; ``notes`` explains an empty or truncated result."""
     entries: list[SitemapEntry] = []
     source = "homepage"
+    sitemap_parse_failed = False
 
     sitemaps = await discover_sitemaps(seed, router=router)
     if sitemaps:
@@ -246,14 +247,25 @@ async def run_map(
             except FetchError as e:
                 if e.code != ErrorCode.SITEMAP_PARSE_ERROR:
                     raise
-                # downgrade: leave entries as-is, fall through to homepage below
+                # downgrade: leave entries as-is, fall through to homepage below.
+                # Remember it so the empty-result note can't claim "no sitemap".
+                sitemap_parse_failed = True
         if entries:
             source = "sitemap"
 
     if not entries:
         source = "homepage"
         resp = await router.fetch(FetchRequest(url=seed, output_format="links"))
-        links = resp.get("metadata", {}).get("links", []) if resp.get("ok") else []
+        if not resp.get("ok"):
+            # An unreachable seed (DNS/SSRF/dead host) is a real failure, not a
+            # zero-URL result. Surface the router's error so `_safe_run` emits
+            # ok:false and the CLI exits 1 (CLAUDE.md exit-code contract).
+            try:
+                code = ErrorCode(resp.get("error_code"))
+            except ValueError:
+                code = ErrorCode.UNKNOWN
+            raise FetchError(code, resp.get("error_detail") or f"{seed}: homepage fetch failed")
+        links = resp.get("metadata", {}).get("links", [])
         entries = [
             SitemapEntry(url=link["url"], lastmod=None, changefreq=None, priority=None)
             for link in links
@@ -270,6 +282,11 @@ async def run_map(
     if count == 0:
         if search_filter:
             notes = f"no URLs matched search filter {search_filter!r}"
+        elif sitemap_parse_failed:
+            notes = (
+                "sitemap(s) discovered but failed to parse; "
+                "no internal links discovered on the homepage fallback"
+            )
         elif source == "homepage":
             notes = "no sitemap found and no internal links discovered on the homepage"
         else:

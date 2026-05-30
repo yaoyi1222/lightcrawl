@@ -324,3 +324,45 @@ async def test_run_map_count_zero_is_ok_with_notes(router):
         )
     assert res.count == 0
     assert res.notes is not None
+
+
+async def test_run_map_raises_when_homepage_fetch_fails(router):
+    # An unreachable seed (DNS failure) must NOT report ok:true count:0 — it is a
+    # real failure and has to surface as a FetchError so the CLI exits 1.
+    import socket
+
+    def _boom(_host):
+        raise socket.gaierror("name resolution failed")
+
+    with patch("lightcrawl.url_safety.socket.gethostbyname", side_effect=_boom), \
+         patch("lightcrawl.fetch_http.fetch",
+               side_effect=AssertionError("network must not be reached")):
+        with pytest.raises(FetchError) as ei:
+            await sitemap.run_map(
+                "https://ex.com/", search_filter=None, limit=None, router=router,
+            )
+    assert ei.value.code == ErrorCode.DNS_FAILED
+
+
+async def test_run_map_note_distinguishes_sitemap_parse_failure(router):
+    # A sitemap WAS discovered but every shard failed to parse, and the homepage
+    # fallback found nothing. The note must not claim "no sitemap found".
+    with _routes({
+        "https://ex.com/robots.txt": _http(
+            "https://ex.com/robots.txt",
+            text="Sitemap: https://ex.com/sitemap.xml\n", ctype="text/plain",
+        ),
+        "https://ex.com/sitemap.xml": _http(
+            "https://ex.com/sitemap.xml", text="<urlset><broken", ctype="application/xml",
+        ),
+        "https://ex.com/": _http(
+            "https://ex.com/", text=_homepage('<a href="https://other.com/x">ext</a>'),
+        ),
+    }):
+        res = await sitemap.run_map(
+            "https://ex.com/", search_filter=None, limit=None, router=router,
+        )
+    assert res.count == 0
+    assert res.notes is not None
+    assert "parse" in res.notes.lower()
+    assert "no sitemap found" not in res.notes.lower()
