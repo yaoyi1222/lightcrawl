@@ -341,3 +341,32 @@ def test_finalize_cancelled_when_cancel_file_present(tmp_path, monkeypatch):
     job.cancel_path.write_text("")
     job.finalize()
     assert job.status == JobStatus.CANCELLED
+
+
+def test_reconcile_flips_dead_owner_to_interrupted(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 5)
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)
+    # Simulate the owner having died: corrupt the create_time in its pid file.
+    me = json.loads(job.pid_path.read_text())
+    me["create_time"] = me["create_time"] + 999.0
+    job.pid_path.write_text(json.dumps(me))
+    flipped = jobs.reconcile_jobs(jobs_dir=tmp_path)
+    assert job.job_id in flipped
+    assert json.loads(job.json_path.read_text())["status"] == "interrupted"
+
+
+def test_reconcile_leaves_live_owner_running(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 5)
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)  # pid = live test process
+    flipped = jobs.reconcile_jobs(jobs_dir=tmp_path)
+    assert job.job_id not in flipped
+    assert json.loads(job.json_path.read_text())["status"] == "running"
+
+
+def test_reconcile_ignores_terminal_jobs(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 5)
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)
+    job.finalize()  # completed, pid removed
+    flipped = jobs.reconcile_jobs(jobs_dir=tmp_path)
+    assert flipped == []
+    assert json.loads(job.json_path.read_text())["status"] == "completed"

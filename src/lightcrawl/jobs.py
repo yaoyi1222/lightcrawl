@@ -98,6 +98,34 @@ def is_owner_alive(path: Path) -> bool:
         return False
 
 
+def reconcile_jobs(jobs_dir: Path | None = None) -> list[str]:
+    """Scan ``jobs_dir`` at CLI startup: any job still marked ``running`` whose
+    pid-file owner is no longer alive is rewritten to ``interrupted``. Returns
+    the list of job_ids flipped. create_time matching makes this immune to PID
+    reuse (a recycled pid is treated as a dead original owner)."""
+    jobs_dir = jobs_dir or paths.JOBS
+    if not jobs_dir.exists():
+        return []
+    flipped: list[str] = []
+    for json_path in jobs_dir.glob("*.json"):
+        try:
+            data = json.loads(json_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+        if data.get("status") != JobStatus.RUNNING.value:
+            continue
+        pid_path = json_path.with_suffix("").with_suffix(".pid")
+        if is_owner_alive(pid_path):
+            continue
+        data["status"] = JobStatus.INTERRUPTED.value
+        data["updated_at"] = time_ms()
+        tmp = json_path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False))
+        os.replace(tmp, json_path)
+        flipped.append(data["job_id"])
+    return flipped
+
+
 class Job:
     def __init__(self, job_id: str, type: str, params: dict, *, jobs_dir: Path):
         self.job_id = job_id
