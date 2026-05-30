@@ -170,6 +170,7 @@ class Job:
         job.completed_at = data.get("completed_at")
         job.progress = Progress(**data.get("progress", {}))
         job.errors_tail = data.get("errors_tail", [])
+        job._load_visited()
         return job
 
     # -- flush -------------------------------------------------------------
@@ -204,3 +205,31 @@ class Job:
         os.replace(tmp, self.json_path)
         self._last_flush_ms = now
         self._pages_since_flush = 0
+
+    # -- visited (append-only, claimed/completed two-state) ----------------
+    def _append_visited(self, url: str, status: str) -> None:
+        with self.visited_path.open("a", encoding="utf-8") as f:
+            f.write(f"{url}\t{status}\t{time_ms()}\n")
+            f.flush()
+            os.fsync(f.fileno())
+
+    def mark_claimed(self, url: str) -> None:
+        self.claimed.add(url)
+        self._append_visited(url, "claimed")
+
+    def mark_completed(self, url: str) -> None:
+        self.completed.add(url)
+        self._append_visited(url, "completed")
+
+    def _load_visited(self) -> None:
+        if not self.visited_path.exists():
+            return
+        for line in self.visited_path.read_text(encoding="utf-8").splitlines():
+            parts = line.split("\t")
+            if len(parts) < 2:
+                continue  # skip half-written / corrupt line
+            url, status = parts[0], parts[1]
+            if status == "claimed":
+                self.claimed.add(url)
+            elif status == "completed":
+                self.completed.add(url)

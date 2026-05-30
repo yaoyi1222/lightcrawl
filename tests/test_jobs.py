@@ -156,3 +156,36 @@ def test_flush_pages_threshold_fires(tmp_path, monkeypatch):
     job._pages_since_flush = 10
     job.flush()
     assert json.loads(job.json_path.read_text())["updated_at"] == 1_000
+
+
+def test_mark_claimed_then_completed_sets_and_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 5)
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)
+    job.mark_claimed("https://ex.com/a")
+    job.mark_completed("https://ex.com/a")
+    assert "https://ex.com/a" in job.claimed
+    assert "https://ex.com/a" in job.completed
+    lines = job.visited_path.read_text().splitlines()
+    assert lines[0].split("\t")[:2] == ["https://ex.com/a", "claimed"]
+    assert lines[1].split("\t")[:2] == ["https://ex.com/a", "completed"]
+
+
+def test_load_hydrates_visited_sets(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 5)
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)
+    job.mark_claimed("https://ex.com/a")
+    job.mark_claimed("https://ex.com/b")
+    job.mark_completed("https://ex.com/a")
+    loaded = jobs.Job.load(job.job_id, jobs_dir=tmp_path)
+    assert loaded.claimed == {"https://ex.com/a", "https://ex.com/b"}
+    assert loaded.completed == {"https://ex.com/a"}
+
+
+def test_load_skips_corrupt_visited_lines(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 5)
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)
+    job.mark_claimed("https://ex.com/a")
+    with job.visited_path.open("a") as f:
+        f.write("garbage-no-tabs\n")
+    loaded = jobs.Job.load(job.job_id, jobs_dir=tmp_path)
+    assert loaded.claimed == {"https://ex.com/a"}
