@@ -171,6 +171,7 @@ class Job:
         job.progress = Progress(**data.get("progress", {}))
         job.errors_tail = data.get("errors_tail", [])
         job._load_visited()
+        job._load_frontier()
         return job
 
     # -- flush -------------------------------------------------------------
@@ -266,3 +267,49 @@ class Job:
                 self.errors_tail = self.errors_tail[-_ERRORS_TAIL_MAX:]
         self._pages_since_flush += 1
         self.flush()
+
+    # -- frontier (append-only push/pop op log, periodic compaction) -------
+    def _append_frontier_op(self, op: dict) -> None:
+        with self.frontier_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(op) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+        self._frontier_lines += 1
+        if self._frontier_lines > _FRONTIER_COMPACT_THRESHOLD:
+            self._compact_frontier()
+
+    def push_frontier(self, item: FrontierItem) -> None:
+        self._frontier.append(item)
+        self._append_frontier_op({"op": "push", "url": item.url, "depth": item.depth})
+
+    def pop_frontier(self) -> FrontierItem | None:
+        if not self._frontier:
+            return None
+        item = self._frontier.pop(0)
+        self._append_frontier_op({"op": "pop"})
+        return item
+
+    def _compact_frontier(self) -> None:
+        """Rewrite the op log as one push line per surviving item (atomic)."""
+        tmp = self.frontier_path.with_suffix(".jsonl.tmp")
+        with tmp.open("w", encoding="utf-8") as f:
+            for it in self._frontier:
+                f.write(json.dumps({"op": "push", "url": it.url, "depth": it.depth}) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, self.frontier_path)
+        self._frontier_lines = len(self._frontier)
+
+    def _load_frontier(self) -> None:
+        if not self.frontier_path.exists():
+            return
+        for line in self.frontier_path.read_text(encoding="utf-8").splitlines():
+            try:
+                op = json.loads(line)
+            except json.JSONDecodeError:
+                continue  # skip half-written line
+            self._frontier_lines += 1
+            if op.get("op") == "push":
+                self._frontier.append(FrontierItem(op["url"], op.get("depth", 0)))
+            elif op.get("op") == "pop" and self._frontier:
+                self._frontier.pop(0)

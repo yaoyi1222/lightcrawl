@@ -221,3 +221,40 @@ def test_errors_tail_capped_at_50(tmp_path, monkeypatch):
     assert len(job.errors_tail) == 50
     assert job.errors_tail[-1]["url"] == "https://ex.com/59"
     assert job.progress.pages_failed == 60
+
+
+def test_frontier_push_pop_fifo(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 5)
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)
+    job.push_frontier(FrontierItem("https://ex.com/a", 0))
+    job.push_frontier(FrontierItem("https://ex.com/b", 1))
+    assert job.pop_frontier() == FrontierItem("https://ex.com/a", 0)
+    assert job.pop_frontier() == FrontierItem("https://ex.com/b", 1)
+    assert job.pop_frontier() is None
+
+
+def test_frontier_hydrates_after_load(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 5)
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)
+    job.push_frontier(FrontierItem("https://ex.com/a", 0))
+    job.push_frontier(FrontierItem("https://ex.com/b", 1))
+    job.pop_frontier()  # consume a → only b remains
+    job.push_frontier(FrontierItem("https://ex.com/c", 2))
+    loaded = jobs.Job.load(job.job_id, jobs_dir=tmp_path)
+    assert [it.url for it in loaded._frontier] == ["https://ex.com/b", "https://ex.com/c"]
+
+
+def test_frontier_compacts_past_threshold(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "time_ms", lambda: 5)
+    monkeypatch.setattr(jobs, "_FRONTIER_COMPACT_THRESHOLD", 10)
+    job = jobs.Job.create("crawl", {}, jobs_dir=tmp_path)
+    for i in range(8):
+        job.push_frontier(FrontierItem(f"https://ex.com/{i}", 0))
+    for _ in range(6):
+        job.pop_frontier()  # 8 push + 6 pop = 14 ops > 10 → compaction triggered
+    # After compaction the file holds only the 2 surviving items as push lines.
+    lines = job.frontier_path.read_text().splitlines()
+    assert len(lines) == 2
+    assert all(json.loads(line)["op"] == "push" for line in lines)
+    loaded = jobs.Job.load(job.job_id, jobs_dir=tmp_path)
+    assert [it.url for it in loaded._frontier] == ["https://ex.com/6", "https://ex.com/7"]
