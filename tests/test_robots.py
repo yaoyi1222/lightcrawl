@@ -138,3 +138,82 @@ async def test_ignore_skips_fetch_and_allows_all(router):
         cache = robots.RobotsCache(router=router, ignore=True)
         assert await cache.allows("https://ex.com/private/x") is True
     assert counter == {}  # no robots.txt fetch performed
+
+
+# -- RFC 9309 path matching (wildcards / longest-match / anchors) -----------
+
+
+async def test_star_wildcard_in_path_is_honored(router):
+    # `Disallow: /*.php` must block /script.php — the case the stdlib parser
+    # silently allowed.
+    with _routes({
+        "https://ex.com/robots.txt": _http(
+            "https://ex.com/robots.txt", text="User-agent: *\nDisallow: /*.php\n"),
+    }):
+        rules = await robots.fetch_robots("ex.com", router=router)
+    assert rules.allows("https://ex.com/script.php") is False
+    assert rules.allows("https://ex.com/page.html") is True
+
+
+async def test_mid_path_wildcard_is_honored(router):
+    with _routes({
+        "https://ex.com/robots.txt": _http(
+            "https://ex.com/robots.txt", text="User-agent: *\nDisallow: /*/admin\n"),
+    }):
+        rules = await robots.fetch_robots("ex.com", router=router)
+    assert rules.allows("https://ex.com/foo/admin") is False
+    assert rules.allows("https://ex.com/foo/public") is True
+
+
+async def test_dollar_anchor_is_honored(router):
+    with _routes({
+        "https://ex.com/robots.txt": _http(
+            "https://ex.com/robots.txt", text="User-agent: *\nDisallow: /path$\n"),
+    }):
+        rules = await robots.fetch_robots("ex.com", router=router)
+    assert rules.allows("https://ex.com/path") is False
+    assert rules.allows("https://ex.com/path/more") is True
+
+
+async def test_longest_match_allow_overrides_broad_disallow(router):
+    # Google's published idiom: broad Disallow, narrow Allow. Longest match wins.
+    with _routes({
+        "https://ex.com/robots.txt": _http(
+            "https://ex.com/robots.txt",
+            text="User-agent: *\nDisallow: /search\nAllow: /search/about\n"),
+    }):
+        rules = await robots.fetch_robots("ex.com", router=router)
+    assert rules.allows("https://ex.com/search/about") is True
+    assert rules.allows("https://ex.com/search/results") is False
+
+
+async def test_allow_wins_equal_length_tie(router):
+    with _routes({
+        "https://ex.com/robots.txt": _http(
+            "https://ex.com/robots.txt",
+            text="User-agent: *\nDisallow: /a\nAllow: /a\n"),
+    }):
+        rules = await robots.fetch_robots("ex.com", router=router)
+    assert rules.allows("https://ex.com/a") is True
+
+
+async def test_bom_prefixed_robots_is_parsed(router):
+    # A UTF-8 BOM must not swallow the first User-agent line.
+    with _routes({
+        "https://ex.com/robots.txt": _http(
+            "https://ex.com/robots.txt", text="﻿User-agent: *\nDisallow: /private\n"),
+    }):
+        rules = await robots.fetch_robots("ex.com", router=router)
+    assert rules.allows("https://ex.com/private/x") is False
+
+
+async def test_cache_key_normalizes_host(router):
+    # Uppercase host and an explicit default port must hit the same cache entry.
+    counter: dict = {}
+    with _routes({
+        "https://ex.com/robots.txt": _http("https://ex.com/robots.txt", text=_ROBOTS_WILDCARD),
+    }, counter=counter):
+        cache = robots.RobotsCache(router=router)
+        assert await cache.allows("https://EX.com/a") is True
+        assert await cache.allows("https://ex.com:443/private/x") is False
+    assert counter["https://ex.com/robots.txt"] == 1
