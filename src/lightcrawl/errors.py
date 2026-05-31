@@ -31,6 +31,10 @@ class ErrorCode(str, Enum):
     # validation; PR 6's crawl-status/resume/cancel subcommands consume them.
     JOB_NOT_FOUND = "JOB_NOT_FOUND"
     JOB_NOT_RESUMABLE = "JOB_NOT_RESUMABLE"
+    # PR 6.1 — crawl robots. An "expected branch" (design §7): the crawl engine
+    # tags URLs skipped by robots.txt with this and counts them separately from
+    # failures; `ok` may still be true.
+    ROBOTS_DISALLOWED = "ROBOTS_DISALLOWED"
     UNKNOWN = "UNKNOWN"
 
 
